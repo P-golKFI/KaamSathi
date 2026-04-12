@@ -1,0 +1,356 @@
+{
+  "@@locale": "en",
+
+  "appName": "KaamSathi",
+  "@appName": { "description": "The name of the app" },
+
+  "tagline": "Empowering Blue Collar India",
+  "@tagline": { "description": "Splash screen tagline" },
+
+  "chooseLanguage": "Choose your language",
+  "@chooseLanguage": { "description": "Language selection screen title" },
+
+  "languageName": "English",
+  "@languageName": { "description": "Name of this language in its own script" },
+
+  "signIn": "Sign In",
+  "@signIn": {},
+
+  "signOut": "Sign Out",
+  "@signOut": {},
+
+  "continueBtn": "Continue",
+  "@continueBtn": {},
+
+  "save": "Save",
+  "@save": {},
+
+  "cancel": "Cancel",
+  "@cancel": {},
+
+  "confirm": "Confirm",
+  "@confirm": {},
+
+  "goBack": "Go Back",
+  "@goBack": {},
+
+  "myProfile": "My Profile",
+  "@myProfile": {},
+
+  "helperHome": "Jobs matching your skills",
+  "@helperHome": {},
+
+  "employerHome": "Helpers near you",
+  "@employerHome": {},
+
+  "selfHelp": "Self Help",
+  "@selfHelp": {},
+
+  "selfHelpSubtitle": "Learn, grow, and know your rights",
+  "@selfHelpSubtitle": {},
+
+  "conversations": "Conversations",
+  "@conversations": {},
+
+  "noConversations": "No conversations yet",
+  "@noConversations": {},
+
+  "roleHelper": "I'm looking for work",
+  "@roleHelper": {},
+
+  "roleEmployer": "I need to hire someone",
+  "@roleEmployer": {},
+
+  "chooseRole": "How would you like to use KaamSathi?",
+  "@chooseRole": {},
+
+  "completeSetup": "Complete Setup",
+  "@completeSetup": {},
+
+  "profileSetup": "Set Up Your Profile",
+  "@profileSetup": {},
+
+  "profileSetupSubtitle": "Tell us about yourself and your skills",
+  "@profileSetupSubtitle": {},
+
+  "yourSkills": "Your Skills",
+  "@yourSkills": {},
+
+  "availability": "Availability",
+  "@availability": {},
+
+  "fullTime": "Full-time",
+  "@fullTime": {},
+
+  "hourly": "Hourly",
+  "@hourly": {},
+
+  "workCities": "Work Cities",
+  "@workCities": {},
+
+  "searchCity": "Search and add a city",
+  "@searchCity": {},
+
+  "noHelpersFound": "No helpers found",
+  "@noHelpersFound": {},
+
+  "noEmployersFound": "No employers found matching your skills",
+  "@noEmployersFound": {},
+
+  "contactBtn": "Contact",
+  "@contactBtn": {},
+
+  "phonePrivate": "Your phone number is always kept private",
+  "@phonePrivate": {},
+
+  "changeRole": "Change Role",
+  "@changeRole": {},
+
+  "chooseRoleSubtitle": "Choose your role to get started",
+  "@chooseRoleSubtitle": {},
+
+  "roleHelperSubtitle": "Browse jobs, apply, and get hired",
+  "@roleHelperSubtitle": {},
+
+  "roleEmployerSubtitle": "Post jobs and find skilled workers",
+  "@roleEmployerSubtitle": {},
+
+  "categoryRightsAtWork": "Your Rights at Work",
+  "@categoryRightsAtWork": {},
+
+  "categoryMoneySavings": "Money & Savings",
+  "@categoryMoneySavings": {},
+
+  "categoryInsurance": "Insurance Made Simple",
+  "@categoryInsurance": {},
+
+  "categoryGovernmentSchemes": "Government Schemes for You",
+  "@categoryGovernmentSchemes": {},
+
+  "quizNext": "Next",
+  "@quizNext": {},
+
+  "quizSeeResult": "See Result",
+  "@quizSeeResult": {},
+
+  "quizContinueLearn": "Continue to Learn",
+  "@quizContinueLearn": {},
+
+  "quizGreatJob": "Great job!",
+  "@quizGreatJob": {},
+
+  "quizGoodEffort": "Good effort!",
+  "@quizGoodEffort": {},
+
+  "quizPassMessage": "You already know this topic well! Keep reading to learn even more.",
+  "@quizPassMessage": {},
+
+  "quizFailMessage": "No worries — the content below will help you understand step by step.",
+  "@quizFailMessage": {},
+
+  "quizScore": "You got {score} out of {total} right.",
+  "@quizScore": {
+    "description": "Quiz score display",
+    "placeholders": {
+      "score": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+
+  "loginWelcome": "Welcome!",
+  "@loginWelcome": {},
+
+  "loginPhoneSubtitle": "Enter your phone number to get started",
+  "@loginPhoneSubtitle": {},
+
+  "keepSignedIn": "Keep me signed in",
+  "@keepSignedIn": {},
+
+  "sendOtp": "Send OTP",
+  "@sendOtp": {},
+
+  "loginOr": "or",
+  "@loginOr": {},
+
+  "useEmailInstead": "Use email instead",
+  "@useEmailInstead": {},
+
+  "invalidPhoneNumber": "Enter a valid 10-digit number",
+  "@invalidPhoneNumber": {},
+
+  "verifyOtp": "Verify OTP",
+  "@verifyOtp": {},
+
+  "enterVerificationCode": "Enter Verification Code",
+  "@enterVerificationCode": {},
+
+  "otpSentMessage": "We sent a 6-digit code to your phone number",
+  "@otpSentMessage": {},
+
+  "sending": "Sending...",
+  "@sending": {},
+
+  "resendIn": "Resend in {seconds}s",
+  "@resendIn": {
+    "description": "Resend countdown button label",
+    "placeholders": {
+      "seconds": { "type": "int" }
+    }
+  },
+
+  "resendCode": "Resend Code",
+  "@resendCode": {},
+
+  "otpResentSuccess": "OTP resent successfully",
+  "@otpResentSuccess": {},
+
+  "enterSixDigitCode": "Enter the 6-digit code",
+  "@enterSixDigitCode": {},
+
+  "emailLogin": "Email Login",
+  "@emailLogin": {},
+
+  "emailLoginSubtitle": "Sign in or create an account",
+  "@emailLoginSubtitle": {},
+
+  "passwordHint": "Password",
+  "@passwordHint": {},
+
+  "confirmPasswordHint": "Re-enter Password",
+  "@confirmPasswordHint": {},
+
+  "continueButton": "Continue",
+  "@continueButton": {},
+
+  "invalidEmailPassword": "Enter valid email and password (min 6 chars)",
+  "@invalidEmailPassword": {},
+
+  "passwordsMismatch": "Passwords do not match",
+  "@passwordsMismatch": {},
+
+  "verifyEmail": "Verify Email",
+  "@verifyEmail": {},
+
+  "checkYourInbox": "Check Your Inbox",
+  "@checkYourInbox": {},
+
+  "emailVerificationSent": "We've sent a verification link to your email address. Please click the link to verify, then tap Continue.",
+  "@emailVerificationSent": {},
+
+  "checkSpamFolder": "Check your spam folder if you don't see the email",
+  "@checkSpamFolder": {},
+
+  "resendEmail": "Resend Email",
+  "@resendEmail": {},
+
+  "emailNotVerified": "Email not verified yet. Check your inbox.",
+  "@emailNotVerified": {},
+
+  "verificationEmailResent": "Verification email resent",
+  "@verificationEmailResent": {},
+
+  "fullNameHint": "Your full name",
+  "@fullNameHint": {},
+
+  "selectStateHint": "Select your state",
+  "@selectStateHint": {},
+
+  "addCustomSkillHint": "Add a custom skill",
+  "@addCustomSkillHint": {},
+
+  "yearsOfExperienceHint": "Years of experience",
+  "@yearsOfExperienceHint": {},
+
+  "hoursPerDayHint": "Hours per day (e.g. 4)",
+  "@hoursPerDayHint": {},
+
+  "nameRequired": "Name is required",
+  "@nameRequired": {},
+
+  "inappropriateName": "Please enter an appropriate name",
+  "@inappropriateName": {},
+
+  "stateRequired": "Please select your state",
+  "@stateRequired": {},
+
+  "citiesRequired": "Add at least one city",
+  "@citiesRequired": {},
+
+  "experienceRequired": "Please enter years of experience",
+  "@experienceRequired": {},
+
+  "experienceRange": "Enter a number between 0 and 50",
+  "@experienceRange": {},
+
+  "hoursRequired": "Please enter hours per day",
+  "@hoursRequired": {},
+
+  "hoursRange": "Enter a number between 1 and 24",
+  "@hoursRange": {},
+
+  "skillsRequired": "Please select at least one skill",
+  "@skillsRequired": {},
+
+  "skillAlreadyExists": "Skill already added",
+  "@skillAlreadyExists": {},
+
+  "confirmYourSkills": "Confirm Your Skills",
+  "@confirmYourSkills": {},
+
+  "selectedSkillsLabel": "You have selected the following skills:",
+  "@selectedSkillsLabel": {},
+
+  "skillsLockedWarning": "Skills cannot be changed after setup.",
+  "@skillsLockedWarning": {},
+
+  "citiesYouCanWorkIn": "Cities you can work in",
+  "@citiesYouCanWorkIn": {},
+
+  "somethingWentWrong": "Something went wrong. Please try again.",
+  "@somethingWentWrong": {},
+
+  "failedToSave": "Failed to save. Please try again.",
+  "@failedToSave": {},
+
+  "sectionAccount": "ACCOUNT",
+  "@sectionAccount": {},
+
+  "labelFullName": "Full Name",
+  "@labelFullName": {},
+
+  "sectionLocation": "LOCATION",
+  "@sectionLocation": {},
+
+  "labelState": "State",
+  "@labelState": {},
+
+  "sectionSkills": "SKILLS",
+  "@sectionSkills": {},
+
+  "sectionExperience": "EXPERIENCE",
+  "@sectionExperience": {},
+
+  "labelExperience": "Experience",
+  "@labelExperience": {},
+
+  "yearSingular": "year",
+  "@yearSingular": {},
+
+  "yearPlural": "years",
+  "@yearPlural": {},
+
+  "sectionAvailability": "AVAILABILITY",
+  "@sectionAvailability": {},
+
+  "sectionWorkCities": "WORK CITIES",
+  "@sectionWorkCities": {},
+
+  "labelSchedule": "Schedule",
+  "@labelSchedule": {},
+
+  "labelHoursPerDay": "Hours/day",
+  "@labelHoursPerDay": {},
+
+  "hoursAbbreviation": "hrs",
+  "@hoursAbbreviation": {}
+}

@@ -1,0 +1,524 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../models/employer_profile_model.dart';
+import '../providers/auth_provider.dart';
+import '../services/firestore_service.dart';
+import '../theme/app_colors.dart';
+import 'avatar_selection_screen.dart';
+
+class EmployerProfileScreen extends StatefulWidget {
+  const EmployerProfileScreen({super.key, this.onSaved});
+
+  final VoidCallback? onSaved;
+
+  @override
+  State<EmployerProfileScreen> createState() => _EmployerProfileScreenState();
+}
+
+class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
+  // Loaded values (to detect changes)
+  String _loadedWorkCategory = '';
+  String _loadedWorkSpecification = '';
+  String _loadedScheduleType = 'full_time';
+  int? _loadedHoursPerDay;
+
+  // Editable state
+  String _workCategory = '';
+  String _scheduleType = 'full_time';
+  int? _hoursPerDay;
+  bool _isDirty = false;
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  // Read-only display
+  String _displayName = '';
+  String _realName = '';
+  String _state = '';
+  String _city = '';
+  int? _avatarIndex;
+
+  late final TextEditingController _specController;
+  late final TextEditingController _hoursController;
+
+  @override
+  void initState() {
+    super.initState();
+    _specController = TextEditingController();
+    _hoursController = TextEditingController();
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _specController.dispose();
+    _hoursController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final data = doc.data()!;
+
+      final workCategory = data['workCategory'] ?? 'other';
+      final workSpec = data['workSpecification'] ?? '';
+      final scheduleType = data['scheduleType'] ?? 'full_time';
+      final hoursPerDay = data['hoursPerDay'] as int?;
+
+      setState(() {
+        _displayName = data['displayName'] ?? data['username'] ?? '';
+        _realName = data['realName'] ?? '';
+        _state = data['state'] ?? '';
+        _city = data['city'] ?? '';
+        _avatarIndex = data['avatarIndex'] as int?;
+
+        _loadedWorkCategory = workCategory;
+        _loadedWorkSpecification = workSpec;
+        _loadedScheduleType = scheduleType;
+        _loadedHoursPerDay = hoursPerDay;
+
+        _workCategory = workCategory;
+        _scheduleType = scheduleType;
+        _hoursPerDay = hoursPerDay;
+
+        _specController.text = workSpec;
+        _hoursController.text = hoursPerDay?.toString() ?? '';
+
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading employer profile: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _checkDirty() {
+    final dirty = _workCategory != _loadedWorkCategory ||
+        _specController.text != _loadedWorkSpecification ||
+        _scheduleType != _loadedScheduleType ||
+        _hoursPerDay != _loadedHoursPerDay;
+    if (dirty != _isDirty) setState(() => _isDirty = dirty);
+  }
+
+  Future<void> _save() async {
+    if (!_isDirty || _isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      await FirestoreService().updateEmployerWorkPreferences(
+        uid,
+        workCategory: _workCategory,
+        workSpecification: _specController.text.trim(),
+        scheduleType: _scheduleType,
+        hoursPerDay: _scheduleType == 'hourly' ? _hoursPerDay : null,
+      );
+      if (mounted) {
+        widget.onSaved != null ? widget.onSaved!() : Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('Error saving profile: $e');
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to save. Please try again.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.offWhite,
+      appBar: AppBar(
+        backgroundColor: AppColors.navyBlue,
+        title: const Text('My Profile'),
+        actions: [
+          TextButton(
+            onPressed: (_isDirty && !_isSaving) ? _save : null,
+            child: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    'Save',
+                    style: TextStyle(
+                      color: (_isDirty && !_isSaving)
+                          ? Colors.white
+                          : Colors.white38,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.teal))
+          : _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
+      children: [
+        _buildAvatar(),
+        const SizedBox(height: 28),
+        _buildSectionLabel('ACCOUNT'),
+        _buildReadOnlyCard([
+          _buildReadOnlyRow('Display Name', _displayName),
+          const Divider(height: 1),
+          _buildReadOnlyRow('Real Name', _realName),
+        ]),
+        const SizedBox(height: 20),
+        _buildSectionLabel('LOCATION'),
+        _buildReadOnlyCard([
+          _buildReadOnlyRow('State', _state),
+          const Divider(height: 1),
+          _buildReadOnlyRow('City', _city),
+        ]),
+        const SizedBox(height: 20),
+        _buildSectionLabel('WORK PREFERENCES'),
+        _buildEditablePreferencesCard(),
+        const SizedBox(height: 20),
+        _buildSectionLabel('WORK DESCRIPTION'),
+        _buildDescriptionCard(),
+        const SizedBox(height: 32),
+        OutlinedButton.icon(
+          onPressed: _handleLogout,
+          icon: const Icon(Icons.logout, color: Colors.red),
+          label: const Text('Sign Out',
+              style: TextStyle(color: Colors.red)),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: Colors.red.shade200),
+            minimumSize: const Size.fromHeight(48),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Future<void> _handleLogout() async {
+    await context.read<AuthProvider>().signOut();
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(
+          context, '/phone-login', (_) => false);
+    }
+  }
+
+  Widget _buildAvatar() {
+    final hasAvatar = _avatarIndex != null &&
+        _avatarIndex! >= 0 &&
+        _avatarIndex! < kAvatars.length;
+
+    return Center(
+      child: Container(
+        width: 80,
+        height: 80,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: hasAvatar
+              ? kAvatars[_avatarIndex!].$2
+              : AppColors.navyBlue.withValues(alpha: 0.15),
+        ),
+        child: Center(
+          child: hasAvatar
+              ? Text(
+                  kAvatars[_avatarIndex!].$1,
+                  style: const TextStyle(fontSize: 38),
+                )
+              : const Icon(
+                  Icons.person,
+                  size: 44,
+                  color: AppColors.navyBlue,
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textGrey,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyCard(List<Widget> children) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _buildReadOnlyRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textGrey,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value.isEmpty ? '—' : value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.navyBlue,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditablePreferencesCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Work category dropdown
+          Row(
+            children: [
+              const SizedBox(
+                width: 100,
+                child: Text(
+                  'Looking for',
+                  style: TextStyle(fontSize: 14, color: AppColors.textGrey),
+                ),
+              ),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _workCategory.isEmpty ? null : _workCategory,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppColors.teal),
+                    ),
+                  ),
+                  items: workCategories
+                      .map((cat) => DropdownMenuItem(
+                            value: cat['value'],
+                            child: Text(
+                              cat['label']!,
+                              style: const TextStyle(
+                                  fontSize: 14, color: AppColors.navyBlue),
+                            ),
+                          ))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _workCategory = val);
+                      _checkDirty();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+          // Schedule type toggle
+          Row(
+            children: [
+              const SizedBox(
+                width: 100,
+                child: Text(
+                  'Schedule',
+                  style: TextStyle(fontSize: 14, color: AppColors.textGrey),
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    _scheduleChip('Full-time', 'full_time'),
+                    const SizedBox(width: 8),
+                    _scheduleChip('Hourly', 'hourly'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // Hours per day field (only when hourly)
+          if (_scheduleType == 'hourly') ...[
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 100,
+                  child: Text(
+                    'Hours/day',
+                    style: TextStyle(fontSize: 14, color: AppColors.textGrey),
+                  ),
+                ),
+                SizedBox(
+                  width: 80,
+                  child: TextFormField(
+                    controller: _hoursController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.teal),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      _hoursPerDay = int.tryParse(val);
+                      _checkDirty();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('hrs', style: TextStyle(color: AppColors.textGrey)),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _scheduleChip(String label, String value) {
+    final isSelected = _scheduleType == value;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _scheduleType = value);
+        _checkDirty();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.teal : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.teal : Colors.grey.shade400,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            color: isSelected ? Colors.white : AppColors.textGrey,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDescriptionCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: _specController,
+        maxLines: 4,
+        decoration: InputDecoration(
+          hintText: 'Describe your work requirements...',
+          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.teal),
+          ),
+          contentPadding: const EdgeInsets.all(12),
+        ),
+        onChanged: (_) => _checkDirty(),
+      ),
+    );
+  }
+}
