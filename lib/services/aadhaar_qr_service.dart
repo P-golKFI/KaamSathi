@@ -203,7 +203,15 @@ class AadhaarQrService {
 
     final name = _str(fields, 3);
     final dob = _str(fields, 4);
-    final uid4 = _str(fields, 19).trim();
+    // Field 19 = uid_last4 in newer format (with phone/email fields).
+    // Older QRs omit phone/email fields so uid_last4 lands at index 17.
+    final uid4Raw19 = _str(fields, 19).trim();
+    final uid4Raw17 = _str(fields, 17).trim();
+    final uid4 = RegExp(r'^\d{4}$').hasMatch(uid4Raw19)
+        ? uid4Raw19
+        : RegExp(r'^\d{4}$').hasMatch(uid4Raw17)
+            ? uid4Raw17
+            : uid4Raw19;
 
     if (name.isEmpty) throw const ParseException('Name field is empty.');
 

@@ -18,6 +18,9 @@ class ConversationModel {
   final String? lastMessageBy;
   final String? lastMessageText;
   final List<String> unreadBy;
+  final String chatType; // 'termBased' | 'oneDay'
+  final String? oneDayDate;
+  final String? oneDayTiming;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -39,6 +42,9 @@ class ConversationModel {
     this.lastMessageBy,
     this.lastMessageText,
     this.unreadBy = const [],
+    this.chatType = 'termBased',
+    this.oneDayDate,
+    this.oneDayTiming,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -47,6 +53,7 @@ class ConversationModel {
   bool get isClosed => status == 'closed';
   bool get isNumbersShared => status == 'numbers_shared';
   bool get isShareUnlocked => messageCount >= 2;
+  bool get isOneDay => chatType == 'oneDay';
 
   String otherParticipantUid(String myUid) {
     return participants.firstWhere((uid) => uid != myUid);
@@ -87,6 +94,9 @@ class ConversationModel {
       lastMessageBy: data['lastMessageBy'],
       lastMessageText: data['lastMessageText'],
       unreadBy: List<String>.from(data['unreadBy'] ?? []),
+      chatType: data['chatType'] as String? ?? 'termBased',
+      oneDayDate: data['oneDayDate'] as String?,
+      oneDayTiming: data['oneDayTiming'] as String?,
       createdAt:
           (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt:
@@ -115,6 +125,9 @@ class ConversationModel {
       'lastMessageBy': lastMessageBy,
       'lastMessageText': lastMessageText,
       'unreadBy': unreadBy,
+      'chatType': chatType,
+      if (oneDayDate != null) 'oneDayDate': oneDayDate,
+      if (oneDayTiming != null) 'oneDayTiming': oneDayTiming,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
     };

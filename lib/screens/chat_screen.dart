@@ -11,6 +11,7 @@ import '../widgets/chat_bubble.dart';
 import '../widgets/prompt_button.dart';
 import '../widgets/number_share_card.dart';
 import '../widgets/gradient_button.dart';
+import '../services/vouch_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -28,8 +29,11 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _otherName;
   String? _otherRole;
   String? _otherCity;
+  List<String> _myRequiredSkills = [];
   bool _isNewConversation = false;
   bool _initializing = true;
+  bool _hasVouched = false;
+  bool _vouchCheckComplete = false;
 
   @override
   void didChangeDependencies() {
@@ -83,11 +87,28 @@ class _ChatScreenState extends State<ChatScreen> {
     final myData = myDoc.data() ?? {};
     if (initiatorRole == 'employer') {
       _myName = myData['username'] ?? myData['displayName'] ?? 'Employer';
+      _myRequiredSkills = List<String>.from(myData['requiredSkills'] ?? []);
       _otherCity = _otherCity!.isEmpty
           ? (myData['city'] ?? '')
           : _otherCity;
     } else {
       _myName = myData['fullName'] ?? myData['displayName'] ?? 'Helper';
+    }
+
+    // One-day chat — use dedicated creation method (no closed-chat dialog)
+    if (args['isOneDayChat'] == true) {
+      _convoId = await ChatService().startOneDayConversation(
+        employerUid: _myUid!,
+        helperUid: _otherUid!,
+        employerName: _myName!,
+        helperName: _otherName!,
+        oneDayDate: args['oneDayDate'] as String? ?? '',
+        oneDayTiming: args['oneDayTiming'] as String? ?? '',
+        oneDaySkill: args['oneDaySkill'] as String? ?? '',
+      );
+      chatProvider.openChat(_convoId!);
+      ChatService().markConversationRead(_convoId!, _myUid!);
+      return;
     }
 
     // Check if a closed conversation exists — warn user
@@ -140,6 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _isNewConversation = true;
     });
+    _checkVouchStatus();
   }
 
   Future<void> _loadNamesFromConvo() async {
@@ -156,6 +178,37 @@ class _ChatScreenState extends State<ChatScreen> {
         _myName = convo.participantNames[_myUid!];
       });
     }
+    _checkVouchStatus();
+  }
+
+  Future<void> _checkVouchStatus() async {
+    if (_myRole != 'employer' || _convoId == null || _myUid == null) return;
+    final has = await VouchService().hasVouchedForConversation(
+      employerId: _myUid!,
+      conversationId: _convoId!,
+    );
+    if (mounted) {
+      setState(() {
+        _hasVouched = has;
+        _vouchCheckComplete = true;
+      });
+    }
+  }
+
+  void _navigateToVouchForm() {
+    Navigator.pushNamed(
+      context,
+      '/vouch-form',
+      arguments: {
+        'workerId': _otherUid!,
+        'workerName': _otherName!,
+        'employerId': _myUid!,
+        'employerDisplayName': _myName!,
+        'conversationId': _convoId!,
+      },
+    ).then((_) {
+      if (mounted) _checkVouchStatus();
+    });
   }
 
   @override
@@ -173,6 +226,19 @@ class _ChatScreenState extends State<ChatScreen> {
       senderUid: _myUid!,
       prompt: prompt,
     );
+
+    // Auto-send skills info after employer opening messages
+    final isEmployerOpening = prompt.key == PromptKey.employerWorkAvailable ||
+        prompt.key == PromptKey.employerAreYouAvailable ||
+        prompt.key == PromptKey.employerLetsTalk;
+    if (isEmployerOpening && _myRequiredSkills.isNotEmpty) {
+      await chatProvider.sendSkillsMessage(
+        convoId: _convoId!,
+        senderUid: _myUid!,
+        skills: _myRequiredSkills,
+      );
+    }
+
     setState(() {
       _isNewConversation = false;
     });
@@ -259,48 +325,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ──── Report User ────
-  Future<void> _reportUser() async {
+  void _reportUser() {
     if (_myUid == null || _otherUid == null || _convoId == null) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text('Report User'),
-        content: Text('Report ${_otherName ?? 'this user'}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Report',
-              style: TextStyle(color: Colors.red.shade600),
-            ),
-          ),
-        ],
-      ),
+    Navigator.pushNamed(
+      context,
+      '/report',
+      arguments: {
+        'reportedUid': _otherUid!,
+        'reportedName': _otherName ?? 'Unknown',
+        'conversationId': _convoId!,
+      },
     );
-
-    if (confirmed == true && mounted) {
-      await context.read<ChatProvider>().reportUser(
-            reporterUid: _myUid!,
-            reportedUid: _otherUid!,
-            conversationId: _convoId!,
-          );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Report submitted.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
   }
 
   @override
@@ -413,9 +448,18 @@ class _ChatScreenState extends State<ChatScreen> {
       return _buildOpeningPromptsBar();
     }
 
-    // Check whose turn it is
+    // Check whose turn it is — skip auto skillsInfo and oneDayInfo messages
     if (convo != null && messages.isNotEmpty) {
-      final lastMessage = messages.last;
+      final lastMessage = messages.lastWhere(
+        (m) => m.type != MessageType.skillsInfo && m.type != MessageType.oneDayInfo,
+        orElse: () => messages.last,
+      );
+
+      // Only the oneDayInfo card exists — employer should send first message
+      if (lastMessage.type == MessageType.oneDayInfo) {
+        if (_myRole == 'employer') return _buildOpeningPromptsBar();
+        return const SizedBox.shrink(); // worker waits for employer
+      }
 
       // If I sent the last message, I'm waiting for a reply
       if (lastMessage.senderUid == _myUid) {
@@ -581,6 +625,21 @@ class _ChatScreenState extends State<ChatScreen> {
           otherName: _otherName,
           otherPhone: otherPhone,
         ),
+        if (_myRole == 'employer' && _vouchCheckComplete && !_hasVouched) ...[
+          const SizedBox(height: 10),
+          GradientButton(
+            text: 'Leave a Vouch',
+            onPressed: _navigateToVouchForm,
+          ),
+        ] else if (_myRole == 'employer' && _vouchCheckComplete && _hasVouched) ...[
+          const SizedBox(height: 10),
+          Center(
+            child: Text(
+              "You've left a vouch for this person",
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+            ),
+          ),
+        ],
       ],
     );
   }

@@ -4,8 +4,8 @@ import '../services/firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/gradient_button.dart';
 
-/// Shared avatar definitions — (emoji, background color)
-const List<(String, Color)> kAvatars = [
+/// Helper avatar definitions — tool/work-themed (emoji, background color)
+const List<(String, Color)> kHelperAvatars = [
   ('👷', Color(0xFFF5A623)),
   ('🔨', Color(0xFF3E8ED0)),
   ('🧰', Color(0xFFE74C3C)),
@@ -20,6 +20,22 @@ const List<(String, Color)> kAvatars = [
   ('🌱', Color(0xFF2ECC71)),
 ];
 
+/// Employer avatar definitions — ideas/discovery/community themed (emoji, background color)
+const List<(String, Color)> kEmployerAvatars = [
+  ('🌍', Color(0xFF00796B)),
+  ('💡', Color(0xFFF9A825)),
+  ('🧭', Color(0xFF6D4C41)),
+  ('🔮', Color(0xFF6A1B9A)),
+  ('🧩', Color(0xFFC62828)),
+  ('🎨', Color(0xFF0097A7)),
+  ('🎭', Color(0xFF1A237E)),
+  ('🎲', Color(0xFF388E3C)),
+  ('🗺️', Color(0xFF8D6E63)),
+  ('🎵', Color(0xFFAD1457)),
+  ('🎯', Color(0xFFB71C1C)),
+  ('🎪', Color(0xFFE65100)),
+];
+
 class AvatarSelectionScreen extends StatefulWidget {
   const AvatarSelectionScreen({super.key});
 
@@ -30,6 +46,14 @@ class AvatarSelectionScreen extends StatefulWidget {
 class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
   int? _selectedIndex;
   bool _isLoading = false;
+  late List<(String, Color)> _avatars;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final role = ModalRoute.of(context)!.settings.arguments as String;
+    _avatars = role == 'helper' ? kHelperAvatars : kEmployerAvatars;
+  }
 
   Future<void> _continue() async {
     if (_selectedIndex == null) return;
@@ -42,7 +66,7 @@ class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
 
       if (!mounted) return;
       final role = ModalRoute.of(context)!.settings.arguments as String;
-      final route = role == 'helper' ? '/helper-home' : '/employer-home';
+      final route = role == 'helper' ? '/aadhaar-nudge' : '/employer-home';
       Navigator.pushNamedAndRemoveUntil(context, route, (_) => false);
     } catch (e) {
       setState(() => _isLoading = false);
@@ -55,8 +79,8 @@ class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
 
   Widget _buildPreview() {
     final hasSelection = _selectedIndex != null;
-    final emoji = hasSelection ? kAvatars[_selectedIndex!].$1 : '?';
-    final color = hasSelection ? kAvatars[_selectedIndex!].$2 : Colors.white24;
+    final emoji = hasSelection ? _avatars[_selectedIndex!].$1 : '?';
+    final color = hasSelection ? _avatars[_selectedIndex!].$2 : Colors.white24;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
@@ -93,7 +117,7 @@ class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
   }
 
   Widget _buildAvatarItem(int index) {
-    final (emoji, color) = kAvatars[index];
+    final (emoji, color) = _avatars[index];
     final isSelected = _selectedIndex == index;
 
     return GestureDetector(
@@ -196,7 +220,7 @@ class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
                     ),
-                    itemCount: kAvatars.length,
+                    itemCount: _avatars.length,
                     itemBuilder: (_, i) => _buildAvatarItem(i),
                   ),
                 ),

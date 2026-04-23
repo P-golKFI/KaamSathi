@@ -1,11 +1,66 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/employer_profile_model.dart';
+import '../models/vouch_model.dart';
+import '../services/vouch_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/gradient_button.dart';
 
-class HelperDetailScreen extends StatelessWidget {
+class HelperDetailScreen extends StatefulWidget {
   const HelperDetailScreen({super.key});
+
+  @override
+  State<HelperDetailScreen> createState() => _HelperDetailScreenState();
+}
+
+class _HelperDetailScreenState extends State<HelperDetailScreen> {
+  Map<String, dynamic>? _data;
+  bool _argsInitialized = false;
+
+  List<VouchModel> _vouches = [];
+  DocumentSnapshot? _lastVouchDoc;
+  bool _isLoadingVouches = false;
+  bool _hasMoreVouches = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_argsInitialized) {
+      _data = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+      _argsInitialized = true;
+      _loadVouches();
+    }
+  }
+
+  Future<void> _loadVouches() async {
+    if (_isLoadingVouches || !_hasMoreVouches || _data == null) return;
+    final workerId = _data!['uid'] as String?;
+    if (workerId == null || workerId.isEmpty) return;
+    setState(() => _isLoadingVouches = true);
+    try {
+      final snapshot = await VouchService().getWorkerVouchesSnapshot(
+        workerId,
+        startAfter: _lastVouchDoc,
+      );
+      final newVouches = snapshot.docs
+          .map((d) => VouchModel.fromFirestore(d))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _vouches.addAll(newVouches);
+          if (snapshot.docs.isNotEmpty) {
+            _lastVouchDoc = snapshot.docs.last;
+          }
+          _hasMoreVouches = newVouches.length >= 20;
+          _isLoadingVouches = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingVouches = false);
+    }
+  }
 
   String _getCategory(List<String> skills) {
     for (final entry in categoryToSkills.entries) {
@@ -18,14 +73,13 @@ class HelperDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final data =
-        ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+    final data = _data ??
+        (ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>);
 
     final name = data['fullName'] ?? data['displayName'] ?? 'Helper';
     final skills = List<String>.from(data['skills'] ?? []);
     final years = data['yearsOfExperience'] ?? 0;
     final scheduleType = data['scheduleType'] ?? 'full_time';
-    final hours = data['hoursPerDay'];
     final city = data['city'] ?? '';
     final state = data['state'] ?? '';
     final isVerified = data['isVerified'] as bool? ?? false;
@@ -34,6 +88,8 @@ class HelperDetailScreen extends StatelessWidget {
     final initials = name.isNotEmpty
         ? name.trim().split(' ').map((w) => w[0]).take(2).join().toUpperCase()
         : '?';
+    final double avgRating = (data['avgRating'] as num?)?.toDouble() ?? 0.0;
+    final int vouchCount = data['vouchCount'] as int? ?? 0;
 
     return Scaffold(
       body: Column(
@@ -277,7 +333,7 @@ class HelperDetailScreen extends StatelessWidget {
                       icon: Icons.schedule,
                       text: scheduleType == 'full_time'
                           ? 'Available Full-time'
-                          : 'Available $hours hours/day',
+                          : 'Available Hourly',
                     ),
 
                     const SizedBox(height: 28),
@@ -331,6 +387,100 @@ class HelperDetailScreen extends StatelessWidget {
                       }).toList(),
                     ),
 
+                    const SizedBox(height: 28),
+
+                    // Vouches section
+                    Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: AppColors.teal,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Vouches',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.navyBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    if (vouchCount == 0 && !_isLoadingVouches)
+                      Text(
+                        'No vouches yet',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade500,
+                        ),
+                      )
+                    else ...[
+                      // Summary row
+                      if (vouchCount > 0)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              avgRating.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.navyBlue,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: List.generate(
+                                    5,
+                                    (i) => Icon(
+                                      i < avgRating.round()
+                                          ? Icons.star
+                                          : Icons.star_border,
+                                      size: 16,
+                                      color: AppColors.orange,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '$vouchCount vouches',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textGrey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      const SizedBox(height: 12),
+                      // Vouch list
+                      ..._vouches.map((v) => _VouchTile(vouch: v)),
+                      if (_isLoadingVouches)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                      if (_hasMoreVouches && !_isLoadingVouches)
+                        TextButton(
+                          onPressed: _loadVouches,
+                          child: const Text(
+                            'Load more',
+                            style: TextStyle(color: AppColors.teal),
+                          ),
+                        ),
+                    ],
+
                     const SizedBox(height: 36),
 
                     // Contact button
@@ -341,11 +491,14 @@ class HelperDetailScreen extends StatelessWidget {
                           'otherUserData': data,
                           'initiatorRole': 'employer',
                         };
-                        final phone = FirebaseAuth.instance.currentUser?.phoneNumber;
+                        final phone =
+                            FirebaseAuth.instance.currentUser?.phoneNumber;
                         if (phone == null || phone.isEmpty) {
-                          Navigator.pushNamed(context, '/add-phone', arguments: chatArgs);
+                          Navigator.pushNamed(context, '/add-phone',
+                              arguments: chatArgs);
                         } else {
-                          Navigator.pushNamed(context, '/chat', arguments: chatArgs);
+                          Navigator.pushNamed(context, '/chat',
+                              arguments: chatArgs);
                         }
                       },
                     ),
@@ -355,6 +508,110 @@ class HelperDetailScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VouchTile extends StatelessWidget {
+  final VouchModel vouch;
+
+  const _VouchTile({required this.vouch});
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = vouch.employerDisplayName.trim().split(' ');
+    final formattedName = parts.length > 1 && parts[1].isNotEmpty
+        ? '${parts[0]} ${parts[1][0]}.'
+        : parts[0];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Row(
+                  children: List.generate(
+                    5,
+                    (i) => Icon(
+                      i < vouch.rating ? Icons.star : Icons.star_border,
+                      size: 16,
+                      color: AppColors.orange,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  DateFormat.yMMMd().format(vouch.createdAt),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+            if (vouch.tags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: vouch.tags.map((tag) {
+                  return Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.teal.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.teal.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      tag,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.teal,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+            if (vouch.note != null && vouch.note!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                vouch.note!,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              '— $formattedName',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textGrey,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

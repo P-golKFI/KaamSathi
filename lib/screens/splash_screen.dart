@@ -80,6 +80,9 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     switch (authProvider.status) {
+      case AuthStatus.banned:
+        Navigator.pushReplacementNamed(context, '/banned');
+        break;
       case AuthStatus.unauthenticated:
         Navigator.pushReplacementNamed(context, '/phone-login');
         break;
@@ -92,10 +95,20 @@ class _SplashScreenState extends State<SplashScreen>
           Navigator.pushReplacementNamed(context, '/helper-home');
         } else if (role == 'helper') {
           Navigator.pushReplacementNamed(context, '/helper-profile-setup');
-        } else if (authProvider.userModel!.profileComplete) {
-          Navigator.pushReplacementNamed(context, '/employer-home');
         } else {
-          Navigator.pushReplacementNamed(context, '/employer-profile-setup');
+          final lastMode = authProvider.userModel!.lastMode;
+          if (lastMode == null) {
+            Navigator.pushReplacementNamed(context, '/mode-selection');
+          } else if (lastMode == 'oneDay') {
+            Navigator.pushReplacementNamed(context, '/one-day-home');
+          } else {
+            // termBased
+            if (authProvider.userModel!.profileComplete) {
+              Navigator.pushReplacementNamed(context, '/employer-home');
+            } else {
+              Navigator.pushReplacementNamed(context, '/one-day-home');
+            }
+          }
         }
         break;
       case AuthStatus.uninitialized:

@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../data/indian_cities.dart';
 import '../l10n/app_localizations.dart';
 import '../services/firestore_service.dart';
@@ -19,13 +19,11 @@ class HelperProfileScreen extends StatefulWidget {
 class _HelperProfileScreenState extends State<HelperProfileScreen> {
   // Loaded values (to detect changes)
   List<String> _loadedWorkCities = [];
-  String _loadedScheduleType = 'full_time';
-  int? _loadedHoursPerDay;
+  List<String> _loadedScheduleTypes = ['daily'];
 
   // Editable state
   List<String> _workCities = [];
-  String _scheduleType = 'full_time';
-  int? _hoursPerDay;
+  List<String> _scheduleTypes = ['daily'];
   bool _isDirty = false;
   bool _isLoading = true;
   bool _isSaving = false;
@@ -41,7 +39,6 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
 
   // City search
   final _citySearchController = TextEditingController();
-  final _hoursController = TextEditingController();
   List<String> _citySuggestions = [];
 
   @override
@@ -53,7 +50,6 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
   @override
   void dispose() {
     _citySearchController.dispose();
-    _hoursController.dispose();
     super.dispose();
   }
 
@@ -69,8 +65,9 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
           ? rawWorkCities
           : (city.isNotEmpty ? [city] : <String>[]);
 
-      final scheduleType = data['scheduleType'] ?? 'full_time';
-      final hoursPerDay = data['hoursPerDay'] as int?;
+      final scheduleTypes = data['scheduleTypes'] != null
+          ? List<String>.from(data['scheduleTypes'])
+          : ['daily'];
 
       setState(() {
         _fullName = data['fullName'] ?? '';
@@ -82,14 +79,10 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
         _maskedUid = data['maskedUid'] as String?;
 
         _loadedWorkCities = List<String>.from(workCities);
-        _loadedScheduleType = scheduleType;
-        _loadedHoursPerDay = hoursPerDay;
+        _loadedScheduleTypes = List<String>.from(scheduleTypes);
 
         _workCities = List<String>.from(workCities);
-        _scheduleType = scheduleType;
-        _hoursPerDay = hoursPerDay;
-        _hoursController.text = hoursPerDay?.toString() ?? '';
-
+        _scheduleTypes = List<String>.from(scheduleTypes);
         _isLoading = false;
       });
     } catch (e) {
@@ -102,8 +95,7 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
     final citiesChanged = _workCities.length != _loadedWorkCities.length ||
         !_workCities.every(_loadedWorkCities.contains);
     final dirty = citiesChanged ||
-        _scheduleType != _loadedScheduleType ||
-        _hoursPerDay != _loadedHoursPerDay;
+        !listEquals(_scheduleTypes, _loadedScheduleTypes);
     if (dirty != _isDirty) setState(() => _isDirty = dirty);
   }
 
@@ -115,8 +107,7 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
       await FirestoreService().updateHelperProfile(
         uid,
         workCities: _workCities,
-        scheduleType: _scheduleType,
-        hoursPerDay: _scheduleType == 'hourly' ? _hoursPerDay : null,
+        scheduleTypes: _scheduleTypes,
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -212,7 +203,7 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
   Widget _buildAvatar() {
     final hasAvatar = _avatarIndex != null &&
         _avatarIndex! >= 0 &&
-        _avatarIndex! < kAvatars.length;
+        _avatarIndex! < kHelperAvatars.length;
 
     return Center(
       child: Container(
@@ -221,13 +212,13 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: hasAvatar
-              ? kAvatars[_avatarIndex!].$2
+              ? kHelperAvatars[_avatarIndex!].$2
               : AppColors.navyBlue.withValues(alpha: 0.15),
         ),
         child: Center(
           child: hasAvatar
               ? Text(
-                  kAvatars[_avatarIndex!].$1,
+                  kHelperAvatars[_avatarIndex!].$1,
                   style: const TextStyle(fontSize: 38),
                 )
               : const Icon(
@@ -360,102 +351,51 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              SizedBox(
-                width: 90,
-                child: Text(
-                  l.labelSchedule,
-                  style: const TextStyle(fontSize: 14, color: AppColors.textGrey),
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    _scheduleChip(l.fullTime, 'full_time'),
-                    const SizedBox(width: 8),
-                    _scheduleChip(l.hourly, 'hourly'),
-                  ],
-                ),
-              ),
+              _availabilityChip('liveIn', 'Live-in',
+                  "Full-day work at the employer's home"),
+              _availabilityChip('daily', 'Daily (come and go)',
+                  'Come for fixed hours every day, like morning to evening'),
+              _availabilityChip('oneTime', 'One-time / per-visit',
+                  'Single jobs, events, or occasional visits'),
             ],
           ),
-          if (_scheduleType == 'hourly') ...[
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                SizedBox(
-                  width: 90,
-                  child: Text(
-                    l.labelHoursPerDay,
-                    style: const TextStyle(fontSize: 14, color: AppColors.textGrey),
-                  ),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: TextFormField(
-                    controller: _hoursController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: AppColors.teal),
-                      ),
-                    ),
-                    onChanged: (val) {
-                      _hoursPerDay = int.tryParse(val);
-                      _checkDirty();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(l.hoursAbbreviation,
-                    style: const TextStyle(color: AppColors.textGrey)),
-              ],
-            ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _scheduleChip(String label, String value) {
-    final isSelected = _scheduleType == value;
-    return GestureDetector(
-      onTap: () {
-        setState(() => _scheduleType = value);
+  Widget _availabilityChip(String value, String label, String description) {
+    final selected = _scheduleTypes.contains(value);
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (on) {
+        setState(() {
+          if (on) {
+            _scheduleTypes.add(value);
+          } else {
+            _scheduleTypes.remove(value);
+          }
+        });
         _checkDirty();
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.teal : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? AppColors.teal : Colors.grey.shade400,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            color: isSelected ? Colors.white : AppColors.textGrey,
-          ),
+      tooltip: description,
+      selectedColor: AppColors.teal,
+      checkmarkColor: Colors.white,
+      backgroundColor: Colors.grey.shade100,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : AppColors.navyBlue,
+        fontWeight: FontWeight.w500,
+        fontSize: 13,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: selected ? AppColors.teal : Colors.grey.shade300,
         ),
       ),
     );
@@ -628,7 +568,7 @@ class _HelperProfileScreenState extends State<HelperProfileScreen> {
             ),
             onChanged: (value) {
               setState(() {
-                _citySuggestions = searchCities(value);
+                _citySuggestions = searchCities(value, state: _state);
               });
             },
           ),

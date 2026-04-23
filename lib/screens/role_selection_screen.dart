@@ -13,7 +13,7 @@ class RoleSelectionScreen extends StatelessWidget {
 
     if (!context.mounted) return;
 
-    final route = role == 'helper' ? '/helper-profile-setup' : '/employer-profile-setup';
+    final route = role == 'helper' ? '/helper-profile-setup' : '/mode-selection';
     Navigator.pushNamedAndRemoveUntil(context, route, (_) => false);
   }
 

@@ -43,17 +43,17 @@ const List<Map<String, String>> workCategories = [
   {
     'value': 'domestic_help',
     'label': 'Domestic Help',
-    'examples': 'cooking, cleaning, babysitting, elderly care',
+    'examples': 'cooking, cleaning, laundry, ironing, babysitting, elderly care',
   },
   {
     'value': 'skilled_labor',
     'label': 'Skilled Labor',
-    'examples': 'plumbing, electrical, carpentry, painting',
+    'examples': 'plumbing, electrical, carpentry, painting, AC repair',
   },
   {
     'value': 'commercial',
     'label': 'Commercial / Business',
-    'examples': 'shop assistant, delivery, warehouse, security',
+    'examples': 'security guard, tailoring, beauty services, vehicle washing',
   },
   {
     'value': 'other',
@@ -64,9 +64,58 @@ const List<Map<String, String>> workCategories = [
 
 /// Maps employer work categories to matching helper skills
 const Map<String, List<String>> categoryToSkills = {
-  'domestic_help': ['Cooking', 'Cleaning', 'Babysitting', 'Elderly Care'],
-  'skilled_labor': ['Plumbing', 'Electrical', 'Carpentry', 'Painting', 'Gardening'],
-  'commercial': ['Security', 'Driving', 'Tailoring'],
+  'domestic_help': [
+    'Cooking',
+    'Personal Chef',
+    'Meal Prep & Tiffin',
+    'Cleaning',
+    'Sweeping & Mopping',
+    'Utensil Washing',
+    'Laundry',
+    'Ironing',
+    'Dusting',
+    'Dishwashing',
+    'Grocery Shopping',
+    'House Sitting',
+    'Babysitting',
+    'Nanny',
+    'Child Care',
+    'School Drop & Pick-up',
+    'Home Tutoring',
+    'Elderly Care',
+    'Patient Care',
+    'Nursing Assistance',
+    'Dog Walking',
+    'Personal Assistant',
+  ],
+  'skilled_labor': [
+    'Plumbing',
+    'Electrical',
+    'Carpentry',
+    'Painting',
+    'Wall Whitewashing',
+    'AC Repair',
+    'Appliance Repair',
+    'Water Tank Cleaning',
+    'Gardening',
+    'Plant Care',
+  ],
+  'commercial': [
+    'Security Guard',
+    'Night Watchman',
+    'Tailoring',
+    'Hair Cutting',
+    'Mehndi',
+    'Beauty Services',
+    'Massage at Home',
+    'Yoga Instructor',
+    'Fitness Trainer',
+    'Vehicle Washing',
+  ],
+  'drivers': [
+    'Driving',
+    'Chauffeur Service',
+  ],
 };
 
 /// Get the display label for a category value
@@ -84,9 +133,8 @@ class EmployerProfileModel {
   final String state;
   final String city;
   final String workCategory;
-  final String workSpecification;
+  final List<String> requiredSkills;
   final String scheduleType; // "full_time" | "hourly"
-  final int? hoursPerDay;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -97,9 +145,8 @@ class EmployerProfileModel {
     required this.state,
     required this.city,
     required this.workCategory,
-    required this.workSpecification,
+    required this.requiredSkills,
     required this.scheduleType,
-    this.hoursPerDay,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -113,9 +160,8 @@ class EmployerProfileModel {
       state: data['state'] ?? '',
       city: data['city'] ?? '',
       workCategory: data['workCategory'] ?? '',
-      workSpecification: data['workSpecification'] ?? '',
+      requiredSkills: List<String>.from(data['requiredSkills'] ?? []),
       scheduleType: data['scheduleType'] ?? 'full_time',
-      hoursPerDay: data['hoursPerDay'],
       createdAt:
           (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt:
@@ -131,9 +177,8 @@ class EmployerProfileModel {
       'state': state,
       'city': city,
       'workCategory': workCategory,
-      'workSpecification': workSpecification,
+      'requiredSkills': requiredSkills,
       'scheduleType': scheduleType,
-      'hoursPerDay': hoursPerDay,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
     };

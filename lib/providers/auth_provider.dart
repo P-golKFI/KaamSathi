@@ -11,6 +11,7 @@ enum AuthStatus {
   unauthenticated, // no user signed in
   authenticated, // signed in but no role selected yet
   roleSelected, // signed in and role exists → ready to use app
+  banned, // account has been banned by admin
 }
 
 class AuthProvider extends ChangeNotifier {
@@ -62,7 +63,9 @@ class AuthProvider extends ChangeNotifier {
     // User is signed in — check Firestore for their role
     _userModel = await _firestoreService.getUser(firebaseUser.uid);
 
-    if (_userModel == null || _userModel!.role == null) {
+    if (_userModel?.isBanned == true) {
+      _status = AuthStatus.banned;
+    } else if (_userModel == null || _userModel!.role == null) {
       _status = AuthStatus.authenticated; // needs role selection
     } else {
       _status = AuthStatus.roleSelected; // fully set up
@@ -257,6 +260,8 @@ class AuthProvider extends ChangeNotifier {
         );
         await _firestoreService.createUser(_userModel!);
         _status = AuthStatus.authenticated;
+      } else if (_userModel!.isBanned) {
+        _status = AuthStatus.banned;
       } else if (_userModel!.role == null) {
         _status = AuthStatus.authenticated;
       } else {

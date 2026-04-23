@@ -8,7 +8,11 @@ import '../theme/app_colors.dart';
 import '../l10n/app_localizations.dart';
 
 class ConversationListScreen extends StatefulWidget {
-  const ConversationListScreen({super.key});
+  /// When set, only shows conversations matching this chatType ('oneDay' or 'termBased').
+  /// When null, shows all conversations (e.g. for workers).
+  final String? chatTypeFilter;
+
+  const ConversationListScreen({super.key, this.chatTypeFilter});
 
   @override
   State<ConversationListScreen> createState() => _ConversationListScreenState();
@@ -73,7 +77,18 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
       ),
       body: Consumer<ChatProvider>(
         builder: (context, chatProvider, _) {
-          final conversations = chatProvider.conversations;
+          final all = chatProvider.conversations;
+          // Sort: preferred type first, then the other type. Within each group
+          // the existing updatedAt order (from the stream) is preserved.
+          final conversations = widget.chatTypeFilter != null
+              ? [
+                  ...all.where((c) => c.chatType == widget.chatTypeFilter),
+                  ...all.where((c) => c.chatType != widget.chatTypeFilter),
+                ]
+              : [
+                  ...all.where((c) => c.isOneDay),
+                  ...all.where((c) => !c.isOneDay),
+                ];
 
           if (conversations.isEmpty) {
             return Center(
@@ -153,6 +168,26 @@ class _ConversationTile extends StatelessWidget {
     required this.onTap,
   });
 
+  Widget _buildOneDayBadge() {
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.teal.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.teal.withValues(alpha: 0.4)),
+      ),
+      child: const Text(
+        'One-day',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: AppColors.teal,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final otherName = convo.otherParticipantName(myUid);
@@ -202,7 +237,7 @@ class _ConversationTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Expanded(
+                      Flexible(
                         child: Text(
                           otherName,
                           style: const TextStyle(
@@ -213,6 +248,8 @@ class _ConversationTile extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (convo.isOneDay) _buildOneDayBadge(),
+                      const Spacer(),
                       Text(
                         time,
                         style: TextStyle(

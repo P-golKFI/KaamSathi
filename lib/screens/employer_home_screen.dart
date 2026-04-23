@@ -2,22 +2,38 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import '../models/employer_profile_model.dart';
 import '../providers/auth_provider.dart';
+import '../services/firestore_service.dart';
 import '../services/match_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/circle_reveal_route.dart';
 import '../widgets/match_card.dart';
 import '../l10n/app_localizations.dart';
+import 'one_day_shell_screen.dart';
+
+const _kChipCategories = [
+  ('skilled_labor', 'Skilled Labour'),
+  ('domestic_help', 'Home Care'),
+  ('commercial', 'Commercial'),
+  ('drivers', 'Drivers'),
+  ('other', 'Other'),
+];
 
 class EmployerHomeScreen extends StatefulWidget {
   const EmployerHomeScreen({
     super.key,
     this.browseCity,
     this.reloadTrigger,
+    this.onChangeCityTapped,
+    this.messagesNavKey,
   });
 
   final ValueNotifier<String?>? browseCity;
   final ValueNotifier<int>? reloadTrigger;
+  final VoidCallback? onChangeCityTapped;
+  final GlobalKey? messagesNavKey;
 
   @override
   State<EmployerHomeScreen> createState() => _EmployerHomeScreenState();
@@ -25,22 +41,27 @@ class EmployerHomeScreen extends StatefulWidget {
 
 class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
   final MatchService _matchService = MatchService();
+  final GlobalKey _toggleKey = GlobalKey();
+  final GlobalKey _filterKey = GlobalKey();
+  final GlobalKey _categoryChipsKey = GlobalKey();
+  final GlobalKey _cityKey = GlobalKey();
 
-  List<Map<String, dynamic>>? _allHelpers; // raw from Firestore
-  List<Map<String, dynamic>>? _helpers;   // after filters applied
+  List<Map<String, dynamic>>? _allHelpers;
+  List<Map<String, dynamic>>? _helpers;
 
   bool _isLoading = true;
   String _uid = '';
   String? _activeCategory;
   String? _userState;
   String _userCity = '';
-  String? _browseCity; // null = use registered city
+  String? _browseCity;
 
   // Filter state
   int? _minAge;
   int? _maxAge;
   int? _minExperience;
   bool _verifiedOnly = false;
+  String? _scheduleType;
   List<String> _selectedSkills = [];
 
   int get _activeFilterCount =>
@@ -48,6 +69,7 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
       (_maxAge != null ? 1 : 0) +
       (_minExperience != null && _minExperience! > 0 ? 1 : 0) +
       (_verifiedOnly ? 1 : 0) +
+      (_scheduleType != null ? 1 : 0) +
       (_selectedSkills.isNotEmpty ? 1 : 0);
 
   @override
@@ -68,6 +90,7 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
   void _onBrowseCityChanged() {
     setState(() {
       _browseCity = widget.browseCity!.value;
+      _userCity = _browseCity!;
       _isLoading = true;
     });
     _loadMatches();
@@ -88,11 +111,21 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
           await FirebaseFirestore.instance.collection('users').doc(_uid).get();
       final data = doc.data()!;
 
-      _activeCategory ??= data['workCategory'] ?? 'other';
+      final savedFilters = data['savedFilters'] as Map<String, dynamic>?;
+      _activeCategory ??= savedFilters?['category'] as String?
+          ?? data['workCategory'] ?? 'other';
       _userState = data['state'] ?? '';
       _userCity = data['city'] ?? '';
+      _selectedSkills = List<String>.from(savedFilters?['skills'] ?? []);
+      final hasSeenTutorial = data['hasSeenTutorial'] as bool? ?? false;
 
       await _loadMatches();
+
+      if (!hasSeenTutorial && mounted) {
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) _showTutorial();
+        });
+      }
     } catch (e) {
       debugPrint('Error loading user data: $e');
       if (!mounted) return;
@@ -106,6 +139,7 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
         workCategory: _activeCategory!,
         state: _userState!,
         city: _browseCity ?? _userCity,
+        requiredSkills: _selectedSkills,
       );
 
       if (!mounted) return;
@@ -135,10 +169,12 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
 
       if (_verifiedOnly && h['isVerified'] != true) return false;
 
-      if (_selectedSkills.isNotEmpty) {
-        final skills = List<String>.from(h['skills'] ?? []);
-        if (!_selectedSkills.any(skills.contains)) return false;
+      if (_scheduleType != null) {
+        final scheduleTypes =
+            List<String>.from(h['scheduleTypes'] ?? [h['scheduleType'] ?? '']);
+        if (!scheduleTypes.contains(_scheduleType)) return false;
       }
+
       return true;
     }).toList();
 
@@ -151,6 +187,7 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
       _maxAge = null;
       _minExperience = null;
       _verifiedOnly = false;
+      _scheduleType = null;
       _selectedSkills = [];
     });
     _applyFilters();
@@ -160,20 +197,47 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
     setState(() {
       _isLoading = true;
       _activeCategory = category;
-      _selectedSkills = []; // reset skills filter when category changes
+      _selectedSkills = [];
     });
     _loadMatches();
+    if (_uid.isNotEmpty) {
+      FirestoreService().updateEmployerSavedFilters(
+        _uid,
+        category: category,
+        skills: [],
+      );
+    }
+  }
+
+  void _switchToOneDay() {
+    final box = _toggleKey.currentContext?.findRenderObject() as RenderBox?;
+    final pos = box?.localToGlobal(Offset.zero);
+    final sz = box?.size;
+    final center = pos != null
+        ? Offset(pos.dx + sz!.width / 2, pos.dy + sz.height / 2)
+        : Offset(MediaQuery.of(context).size.width - 60, 30);
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) FirestoreService().updateEmployerLastMode(uid, 'oneDay');
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      CircleRevealRoute(
+        page: const OneDayShellScreen(),
+        center: center,
+        expandColor: const Color(0xFF0D5E5E),
+      ),
+      (_) => false,
+    );
   }
 
   Future<void> _showFilters() async {
-    final categorySkills = categoryToSkills[_activeCategory];
-
-    // Local copies for the sheet's StatefulBuilder
     int? sheetMinAge = _minAge;
     int? sheetMaxAge = _maxAge;
     int? sheetMinExp = _minExperience;
     bool sheetVerified = _verifiedOnly;
-    List<String> sheetSkills = List.from(_selectedSkills);
+    String? sheetSchedule = _scheduleType;
+    List<String> sheetSelectedSkills = List.from(_selectedSkills);
 
     final minAgeController =
         TextEditingController(text: _minAge?.toString() ?? '');
@@ -201,7 +265,6 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
               builder: (_, scrollController) {
                 return Column(
                   children: [
-                    // Header
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
                       child: Row(
@@ -238,7 +301,8 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
                                 sheetMaxAge = null;
                                 sheetMinExp = null;
                                 sheetVerified = false;
-                                sheetSkills = [];
+                                sheetSchedule = null;
+                                sheetSelectedSkills = [];
                                 minAgeController.clear();
                                 maxAgeController.clear();
                               });
@@ -252,15 +316,13 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
                       ),
                     ),
                     const Divider(height: 1),
-                    // Scrollable content
                     Expanded(
                       child: ListView(
                         controller: scrollController,
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                         children: [
-                          // Skills section (only for known categories)
-                          if (categorySkills != null &&
-                              categorySkills.isNotEmpty) ...[
+                          // Skills section (for categories that have sub-skills)
+                          if (categoryToSkills[_activeCategory] != null) ...[
                             const Text(
                               'Skills',
                               style: TextStyle(
@@ -269,29 +331,23 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
                                 color: AppColors.navyBlue,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Show helpers with at least one of:',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade500,
-                              ),
-                            ),
                             const SizedBox(height: 10),
                             Wrap(
                               spacing: 8,
                               runSpacing: 6,
-                              children: categorySkills.map((skill) {
-                                final selected = sheetSkills.contains(skill);
+                              children: categoryToSkills[_activeCategory]!
+                                  .map((skill) {
+                                final selected =
+                                    sheetSelectedSkills.contains(skill);
                                 return FilterChip(
                                   label: Text(skill),
                                   selected: selected,
-                                  onSelected: (val) {
+                                  onSelected: (_) {
                                     setSheetState(() {
-                                      if (val) {
-                                        sheetSkills.add(skill);
+                                      if (selected) {
+                                        sheetSelectedSkills.remove(skill);
                                       } else {
-                                        sheetSkills.remove(skill);
+                                        sheetSelectedSkills.add(skill);
                                       }
                                     });
                                   },
@@ -469,10 +525,57 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
                             },
                           ),
                           const SizedBox(height: 8),
+                          const Divider(height: 1),
+                          const SizedBox(height: 16),
+
+                          // Schedule type
+                          const Text(
+                            'Schedule Type',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.navyBlue,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              ('Any', null),
+                              ('Full-time', 'full_time'),
+                              ('Hourly', 'hourly'),
+                            ].map((opt) {
+                              final selected = sheetSchedule == opt.$2;
+                              return ChoiceChip(
+                                label: Text(opt.$1),
+                                selected: selected,
+                                onSelected: (_) {
+                                  setSheetState(() {
+                                    sheetSchedule = opt.$2;
+                                  });
+                                },
+                                selectedColor:
+                                    AppColors.teal.withValues(alpha: 0.15),
+                                labelStyle: TextStyle(
+                                  color: selected
+                                      ? AppColors.teal
+                                      : AppColors.navyBlue,
+                                  fontSize: 13,
+                                ),
+                                side: BorderSide(
+                                  color: selected
+                                      ? AppColors.teal
+                                      : Colors.grey.shade300,
+                                ),
+                                backgroundColor: Colors.white,
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
                         ],
                       ),
                     ),
-                    // Apply button
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                       child: SizedBox(
@@ -497,9 +600,18 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
                                       ? sheetMinExp
                                       : null;
                               _verifiedOnly = sheetVerified;
-                              _selectedSkills = List.from(sheetSkills);
+                              _scheduleType = sheetSchedule;
+                              _selectedSkills = List.from(sheetSelectedSkills);
+                              _isLoading = true;
                             });
-                            _applyFilters();
+                            _loadMatches();
+                            if (_uid.isNotEmpty) {
+                              FirestoreService().updateEmployerSavedFilters(
+                                _uid,
+                                category: _activeCategory!,
+                                skills: _selectedSkills,
+                              );
+                            }
                           },
                           child: const Text(
                             'Apply Filters',
@@ -519,6 +631,268 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
     );
   }
 
+  void _showTutorial() {
+    final targets = <TargetFocus>[
+      TargetFocus(
+        identify: 'filter',
+        keyTarget: _filterKey,
+        shape: ShapeLightFocus.Circle,
+        enableOverlayTab: true,
+        enableTargetTab: true,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (_, _) => _tutorialContent(
+              title: 'Find the exact skill you need',
+              description:
+                  'Tap here to filter by specific skills like Cooking, '
+                  'Cleaning, or Electrician within your selected category',
+            ),
+          ),
+        ],
+      ),
+      TargetFocus(
+        identify: 'toggle',
+        keyTarget: _toggleKey,
+        shape: ShapeLightFocus.RRect,
+        radius: 20,
+        enableOverlayTab: true,
+        enableTargetTab: true,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (_, _) => _tutorialContent(
+              title: 'Need quick one-day help?',
+              description:
+                  'Switch this on to find workers available for same-day '
+                  'jobs like repairs, cleaning, or massages',
+            ),
+          ),
+        ],
+      ),
+      TargetFocus(
+        identify: 'categories',
+        keyTarget: _categoryChipsKey,
+        shape: ShapeLightFocus.RRect,
+        radius: 12,
+        enableOverlayTab: true,
+        enableTargetTab: true,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (_, _) => _tutorialContent(
+              title: 'Browse by category',
+              description:
+                  'Tap any category to see workers in that field — '
+                  'Home Care, Skilled Labour, Commercial, and more',
+            ),
+          ),
+        ],
+      ),
+      TargetFocus(
+        identify: 'city',
+        keyTarget: _cityKey,
+        shape: ShapeLightFocus.RRect,
+        radius: 8,
+        enableOverlayTab: true,
+        enableTargetTab: true,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (_, _) => _tutorialContent(
+              title: 'Change your city',
+              description:
+                  'Tap here to switch cities and see workers available '
+                  'in a different location',
+            ),
+          ),
+        ],
+      ),
+      if (widget.messagesNavKey != null)
+        TargetFocus(
+          identify: 'messages',
+          keyTarget: widget.messagesNavKey!,
+          shape: ShapeLightFocus.Circle,
+          enableOverlayTab: true,
+          enableTargetTab: true,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top,
+              builder: (_, _) => _tutorialContent(
+                title: 'Your conversations',
+                description:
+                    'All your chats with workers appear here. '
+                    "Start a conversation from any worker's profile",
+              ),
+            ),
+          ],
+        ),
+    ];
+
+    TutorialCoachMark(
+      targets: targets,
+      colorShadow: const Color(0xFF193A4A),
+      opacityShadow: 0.85,
+      textSkip: 'SKIP',
+      textStyleSkip: const TextStyle(
+        color: Colors.white,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      paddingFocus: 8,
+      focusAnimationDuration: const Duration(milliseconds: 300),
+      unFocusAnimationDuration: const Duration(milliseconds: 300),
+      pulseAnimationDuration: const Duration(milliseconds: 800),
+      onFinish: _setTutorialSeen,
+      onSkip: () {
+        _setTutorialSeen();
+        return true;
+      },
+    ).show(context: context, rootOverlay: true);
+  }
+
+  Widget _tutorialContent({
+    required String title,
+    required String description,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          description,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _setTutorialSeen() {
+    if (_uid.isNotEmpty) {
+      FirestoreService().markEmployerTutorialSeen(_uid);
+    }
+  }
+
+  Widget _buildModeToggle() {
+    return Container(
+      key: _toggleKey,
+      margin: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'One-day',
+            style: TextStyle(
+                fontSize: 11, color: Colors.white.withValues(alpha: 0.8)),
+          ),
+          const SizedBox(width: 6),
+          Transform.scale(
+            scale: 0.7,
+            child: Switch(
+              value: false,
+              onChanged: (val) {
+                if (val) _switchToOneDay();
+              },
+              trackColor: WidgetStateProperty.resolveWith((states) =>
+                  states.contains(WidgetState.selected)
+                      ? const Color(0xFF5DCAA5)
+                      : Colors.white.withValues(alpha: 0.25)),
+              thumbColor: WidgetStateProperty.all(Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterButton() {
+    return Stack(
+      key: _filterKey,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.filter_list),
+          tooltip: 'Filter helpers',
+          onPressed: _showFilters,
+        ),
+        if (_activeFilterCount > 0)
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLogoutButton() {
+    return IconButton(
+      icon: const Icon(Icons.logout),
+      onPressed: () async {
+        await context.read<AuthProvider>().signOut();
+        if (!context.mounted) return;
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/phone-login',
+          (_) => false,
+        );
+      },
+    );
+  }
+
+  Widget _buildCityBar() {
+    return Padding(
+      key: _cityKey,
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+      child: Row(
+        children: [
+          const Icon(Icons.location_on, size: 12, color: Color(0xFF5DCAA5)),
+          const SizedBox(width: 4),
+          Text(
+            _browseCity ?? _userCity,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.9),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Icon(Icons.keyboard_arrow_down,
+              size: 10, color: Colors.white.withValues(alpha: 0.5)),
+          const Spacer(),
+          GestureDetector(
+            onTap: widget.onChangeCityTapped,
+            child: const Text(
+              'Change',
+              style: TextStyle(fontSize: 10, color: Color(0xFF5DCAA5)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -529,117 +903,93 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
           AppLocalizations.of(context)!.appName,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(28),
+          child: _buildCityBar(),
+        ),
         actions: [
-          // Filter button with active badge
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.filter_list),
-                tooltip: 'Filter helpers',
-                onPressed: _showFilters,
-              ),
-              if (_activeFilterCount > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await context.read<AuthProvider>().signOut();
-              if (!context.mounted) return;
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/phone-login',
-                (_) => false,
-              );
-            },
-          ),
+          _buildModeToggle(),
+          _buildFilterButton(),
+          _buildLogoutButton(),
         ],
       ),
-      body: Stack(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Faint logo watermark
-          Center(
-            child: Opacity(
-              opacity: 0.05,
-              child: Image.asset(
-                'assets/images/logo.png',
-                width: 280,
+          // Category chips row
+          Container(
+            key: _categoryChipsKey,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: _kChipCategories.map((cat) {
+                  final selected = _activeCategory == cat.$1;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(cat.$2),
+                      selected: selected,
+                      onSelected: (_) => _switchCategory(cat.$1),
+                      selectedColor: const Color(0xFF1a8a8a),
+                      backgroundColor: Colors.transparent,
+                      labelStyle: TextStyle(
+                        color: selected
+                            ? Colors.white
+                            : const Color(0xFF1a8a8a),
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                      side: const BorderSide(color: Color(0xFF1a8a8a)),
+                      shape: const StadiumBorder(),
+                      showCheckmark: false,
+                    ),
+                  );
+                }).toList(),
               ),
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_browseCity != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Chip(
-                    avatar: const Icon(Icons.location_on, size: 16,
-                        color: AppColors.teal),
-                    label: Text('Showing results for: $_browseCity'),
-                    labelStyle: const TextStyle(
-                        fontSize: 13, color: AppColors.navyBlue),
-                    backgroundColor: AppColors.teal.withValues(alpha: 0.1),
-                    side: BorderSide(color: AppColors.teal.withValues(alpha: 0.3)),
-                    deleteIcon:
-                        const Icon(Icons.close, size: 16, color: AppColors.navyBlue),
-                    onDeleted: () {
-                      setState(() {
-                        _browseCity = null;
-                        _isLoading = true;
-                      });
-                      _loadMatches();
-                    },
-                  ),
+          if (_activeFilterCount > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Chip(
+                avatar: const Icon(Icons.filter_list,
+                    size: 16, color: AppColors.teal),
+                label: Text(
+                  '$_activeFilterCount ${_activeFilterCount == 1 ? 'filter' : 'filters'} active',
                 ),
-              if (_activeFilterCount > 0)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                      16, _browseCity != null ? 4 : 8, 16, 0),
-                  child: Chip(
-                    avatar: const Icon(Icons.filter_list, size: 16,
-                        color: AppColors.teal),
-                    label: Text(
-                      '$_activeFilterCount ${_activeFilterCount == 1 ? 'filter' : 'filters'} active',
-                    ),
-                    labelStyle: const TextStyle(
-                        fontSize: 13, color: AppColors.navyBlue),
-                    backgroundColor: AppColors.teal.withValues(alpha: 0.1),
-                    side: BorderSide(color: AppColors.teal.withValues(alpha: 0.3)),
-                    deleteIcon:
-                        const Icon(Icons.close, size: 16, color: AppColors.navyBlue),
-                    onDeleted: _clearFilters,
-                  ),
-                ),
-              Expanded(
-                child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(color: AppColors.teal),
-                      )
-                    : RefreshIndicator(
-                        color: AppColors.teal,
-                        onRefresh: () async {
-                          setState(() => _isLoading = true);
-                          await _loadMatches();
-                        },
-                        child: _helpers == null || _helpers!.isEmpty
-                            ? _buildEmptyState()
-                            : _buildHelperList(),
-                      ),
+                labelStyle: const TextStyle(
+                    fontSize: 13, color: AppColors.navyBlue),
+                backgroundColor: AppColors.teal.withValues(alpha: 0.1),
+                side: BorderSide(
+                    color: AppColors.teal.withValues(alpha: 0.3)),
+                deleteIcon: const Icon(Icons.close,
+                    size: 16, color: AppColors.navyBlue),
+                onDeleted: _clearFilters,
               ),
-            ],
+            ),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child:
+                        CircularProgressIndicator(color: AppColors.teal),
+                  )
+                : RefreshIndicator(
+                    color: AppColors.teal,
+                    onRefresh: () async {
+                      setState(() => _isLoading = true);
+                      await _loadMatches();
+                    },
+                    child: _helpers == null || _helpers!.isEmpty
+                        ? _buildEmptyState()
+                        : _buildHelperList(),
+                  ),
           ),
         ],
       ),
@@ -699,29 +1049,6 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
             fontSize: 14,
             color: AppColors.textGrey,
           ),
-        ),
-        const SizedBox(height: 24),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          alignment: WrapAlignment.center,
-          children: workCategories
-              .where((cat) => cat['value'] != _activeCategory)
-              .map((cat) {
-            return ActionChip(
-              label: Text(cat['label']!),
-              labelStyle: const TextStyle(
-                fontSize: 13,
-                color: AppColors.navyBlue,
-              ),
-              backgroundColor: Colors.white,
-              side: BorderSide(color: AppColors.teal.withValues(alpha: 0.4)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              onPressed: () => _switchCategory(cat['value']!),
-            );
-          }).toList(),
         ),
       ],
     );

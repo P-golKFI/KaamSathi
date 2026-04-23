@@ -80,8 +80,100 @@ class ChatBubble extends StatelessWidget {
       );
     }
 
+    // One-day info card — full-width teal info panel
+    if (message.type == MessageType.oneDayInfo) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F6F6),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.teal.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'One-day work request',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.teal,
+                ),
+              ),
+              const SizedBox(height: 6),
+              if (message.oneDayDate != null)
+                Text(
+                  'Date: ${_formatOneDayDate(message.oneDayDate!)}',
+                  style: const TextStyle(fontSize: 13, color: AppColors.navyBlue),
+                ),
+              if (message.oneDayTiming != null)
+                Text(
+                  'Timing: ${message.oneDayTiming}',
+                  style: const TextStyle(fontSize: 13, color: AppColors.navyBlue),
+                ),
+              if (message.oneDaySkill != null)
+                Text(
+                  'Skill needed: ${message.oneDaySkill}',
+                  style: const TextStyle(fontSize: 13, color: AppColors.navyBlue),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Skills info — same bubble style, slightly smaller text
+    if (message.type == MessageType.skillsInfo) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisAlignment:
+              isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            if (isMine) const Spacer(flex: 2),
+            Flexible(
+              flex: 5,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isMine ? AppColors.teal.withValues(alpha: 0.85) : Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(isMine ? 16 : 4),
+                    bottomRight: Radius.circular(isMine ? 4 : 16),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  message.text,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isMine ? Colors.white : AppColors.navyBlue,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+            if (!isMine) const Spacer(flex: 2),
+          ],
+        ),
+      );
+    }
+
     // Regular prompt messages — chat bubbles
     final time = DateFormat.jm().format(message.createdAt);
+
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -139,5 +231,19 @@ class ChatBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _formatOneDayDate(String isoDate) {
+    try {
+      final date = DateTime.parse(isoDate);
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
+      const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      return '${weekdays[date.weekday - 1]}, ${date.day} ${months[date.month - 1]} ${date.year}';
+    } catch (_) {
+      return isoDate;
+    }
   }
 }

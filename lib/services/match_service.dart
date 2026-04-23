@@ -9,6 +9,7 @@ class MatchService {
     required String workCategory,
     required String state,
     required String city,
+    List<String> requiredSkills = const [],
   }) async {
     final skillsForCategory = categoryToSkills[workCategory];
 
@@ -36,16 +37,27 @@ class MatchService {
       }
     }
 
+    // Remove flagged underage accounts from results
+    final eligible = merged.where((h) => h['isUnderage'] != true).toList();
+
+    // Regular mode: only show helpers who offer full_time or hourly work
+    final regularEligible = eligible.where((h) {
+      final types = List<String>.from(h['scheduleTypes'] ?? []);
+      return types.contains('full_time') || types.contains('hourly');
+    }).toList();
+
     // For known categories, filter by matching skills in Dart
+    // If requiredSkills is set, use those; otherwise fall back to all category skills
     // For 'other', show all helpers in the same state+city
     if (skillsForCategory != null && skillsForCategory.isNotEmpty) {
-      return merged.where((h) {
+      final filterSkills = requiredSkills.isNotEmpty ? requiredSkills : skillsForCategory;
+      return regularEligible.where((h) {
         final skills = List<String>.from(h['skills'] ?? []);
-        return skillsForCategory.any((s) => skills.contains(s));
+        return filterSkills.any((s) => skills.contains(s));
       }).toList();
     }
 
-    return merged;
+    return regularEligible;
   }
 
   /// Find employers whose work category matches a helper's skills and are in the helper's work cities

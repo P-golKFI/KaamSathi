@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:provider/provider.dart';
 import '../data/indian_cities.dart';
 import '../models/employer_profile_model.dart';
@@ -23,12 +23,8 @@ class _EmployerProfileSetupScreenState
   final _usernameController = TextEditingController();
   final _realNameController = TextEditingController();
   final _cityController = TextEditingController();
-  final _workSpecController = TextEditingController();
-  final _hoursController = TextEditingController();
-
   String? _selectedState;
   String? _selectedCategory;
-  String _scheduleType = 'full_time';
   List<String> _citySuggestions = [];
   bool _isLoading = false;
 
@@ -37,8 +33,6 @@ class _EmployerProfileSetupScreenState
     _usernameController.dispose();
     _realNameController.dispose();
     _cityController.dispose();
-    _workSpecController.dispose();
-    _hoursController.dispose();
     super.dispose();
   }
 
@@ -56,11 +50,8 @@ class _EmployerProfileSetupScreenState
         state: _selectedState!,
         city: _cityController.text.trim(),
         workCategory: _selectedCategory!,
-        workSpecification: _workSpecController.text.trim(),
-        scheduleType: _scheduleType,
-        hoursPerDay: _scheduleType == 'hourly'
-            ? int.parse(_hoursController.text.trim())
-            : null,
+        requiredSkills: [],
+        scheduleType: 'full_time',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -280,7 +271,11 @@ class _EmployerProfileSetupScreenState
                             );
                           }).toList(),
                           onChanged: (value) {
-                            setState(() => _selectedState = value);
+                            setState(() {
+                              _selectedState = value;
+                              _citySuggestions = [];
+                              _cityController.clear();
+                            });
                           },
                           validator: (v) {
                             if (v == null) return 'Please select your state';
@@ -302,7 +297,7 @@ class _EmployerProfileSetupScreenState
                           ),
                           onChanged: (value) {
                             setState(() {
-                              _citySuggestions = searchCities(value);
+                              _citySuggestions = searchCities(value, state: _selectedState);
                             });
                           },
                           validator: (v) {
@@ -424,7 +419,9 @@ class _EmployerProfileSetupScreenState
                             }).toList();
                           },
                           onChanged: (value) {
-                            setState(() => _selectedCategory = value);
+                            setState(() {
+                              _selectedCategory = value;
+                            });
                           },
                           validator: (v) {
                             if (v == null) return 'Please select a category';
@@ -432,126 +429,6 @@ class _EmployerProfileSetupScreenState
                           },
                         ),
                         const SizedBox(height: 20),
-
-                        // Work Specification (appears after category is selected)
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          child: _selectedCategory != null
-                              ? Column(
-                                  children: [
-                                    TextFormField(
-                                      controller: _workSpecController,
-                                      maxLines: 2,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: AppColors.navyBlue,
-                                      ),
-                                      decoration: AppDecorations.styledInput(
-                                        hint:
-                                            'Describe the exact work you need',
-                                        prefixIcon: Icons.edit_note,
-                                      ),
-                                      validator: (v) {
-                                        if (_selectedCategory != null &&
-                                            (v == null ||
-                                                v.trim().isEmpty)) {
-                                          return 'Please describe the work';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 20),
-                                  ],
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-
-                        // Schedule section label
-                        Row(
-                          children: [
-                            Container(
-                              width: 4,
-                              height: 20,
-                              decoration: BoxDecoration(
-                                color: AppColors.orange,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Work Schedule',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.navyBlue,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Schedule toggle
-                        Row(
-                          children: [
-                            _buildScheduleChip(
-                              label: 'Full-time',
-                              icon: Icons.access_time_filled,
-                              isSelected: _scheduleType == 'full_time',
-                              onTap: () =>
-                                  setState(() => _scheduleType = 'full_time'),
-                            ),
-                            const SizedBox(width: 12),
-                            _buildScheduleChip(
-                              label: 'Hourly',
-                              icon: Icons.schedule,
-                              isSelected: _scheduleType == 'hourly',
-                              onTap: () =>
-                                  setState(() => _scheduleType = 'hourly'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Hours per day (only when hourly)
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          child: _scheduleType == 'hourly'
-                              ? Column(
-                                  children: [
-                                    TextFormField(
-                                      controller: _hoursController,
-                                      keyboardType: TextInputType.number,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: AppColors.navyBlue,
-                                      ),
-                                      decoration: AppDecorations.styledInput(
-                                        hint: 'Hours per day (e.g. 4)',
-                                        prefixIcon: Icons.timelapse,
-                                      ),
-                                      validator: (v) {
-                                        if (_scheduleType != 'hourly') {
-                                          return null;
-                                        }
-                                        if (v == null || v.trim().isEmpty) {
-                                          return 'Please enter hours per day';
-                                        }
-                                        final hours = int.tryParse(v.trim());
-                                        if (hours == null ||
-                                            hours < 1 ||
-                                            hours > 24) {
-                                          return 'Enter a number between 1 and 24';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 20),
-                                  ],
-                                )
-                              : const SizedBox.shrink(),
-                        ),
 
                         // Privacy notice
                         Container(
@@ -637,55 +514,4 @@ class _EmployerProfileSetupScreenState
     );
   }
 
-  Widget _buildScheduleChip({
-    required String label,
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.teal : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? AppColors.teal : Colors.grey.shade200,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: AppColors.teal.withValues(alpha: 0.25),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isSelected ? Colors.white : AppColors.textGrey,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected ? Colors.white : AppColors.navyBlue,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

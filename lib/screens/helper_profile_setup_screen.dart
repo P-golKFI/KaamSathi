@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:provider/provider.dart';
 import '../data/indian_cities.dart';
 import '../l10n/app_localizations.dart';
@@ -24,13 +24,9 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
   final _nameController = TextEditingController();
   final _citySearchController = TextEditingController();
   final _experienceController = TextEditingController();
-  final _hoursController = TextEditingController();
-  final _customSkillController = TextEditingController();
-
   String? _selectedState;
-  String _scheduleType = 'full_time';
+  List<String> _scheduleTypes = ['full_time'];
   final Set<String> _selectedSkills = {};
-  final List<String> _customSkills = [];
   final List<String> _selectedCities = [];
   List<String> _citySuggestions = [];
   bool _isLoading = false;
@@ -40,27 +36,7 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
     _nameController.dispose();
     _citySearchController.dispose();
     _experienceController.dispose();
-    _hoursController.dispose();
-    _customSkillController.dispose();
     super.dispose();
-  }
-
-  void _addCustomSkill() {
-    final skill = _customSkillController.text.trim();
-    if (skill.isEmpty) return;
-    if (_selectedSkills.contains(skill) ||
-        predefinedSkills.contains(skill) ||
-        _customSkills.contains(skill)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context)!.skillAlreadyExists)),
-      );
-      return;
-    }
-    setState(() {
-      _customSkills.add(skill);
-      _selectedSkills.add(skill);
-      _customSkillController.clear();
-    });
   }
 
   Future<void> _confirmAndSubmit() async {
@@ -69,6 +45,13 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
     if (_selectedSkills.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context)!.skillsRequired)),
+      );
+      return;
+    }
+
+    if (_scheduleTypes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one work type')),
       );
       return;
     }
@@ -193,10 +176,7 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
         workCities: _selectedCities,
         skills: _selectedSkills.toList(),
         yearsOfExperience: int.parse(_experienceController.text.trim()),
-        scheduleType: _scheduleType,
-        hoursPerDay: _scheduleType == 'hourly'
-            ? int.parse(_hoursController.text.trim())
-            : null,
+        scheduleTypes: _scheduleTypes,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -220,7 +200,6 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
     final screenHeight = MediaQuery.of(context).size.height;
-    final allSkills = [...predefinedSkills, ..._customSkills];
 
     return Scaffold(
       body: Container(
@@ -360,7 +339,12 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
                             );
                           }).toList(),
                           onChanged: (value) {
-                            setState(() => _selectedState = value);
+                            setState(() {
+                              _selectedState = value;
+                              _selectedCities.clear();
+                              _citySuggestions = [];
+                              _citySearchController.clear();
+                            });
                           },
                           validator: (v) {
                             if (v == null) return l.stateRequired;
@@ -439,7 +423,7 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
                           ),
                           onChanged: (value) {
                             setState(() {
-                              _citySuggestions = searchCities(value);
+                              _citySuggestions = searchCities(value, state: _selectedState);
                             });
                           },
                           validator: (_) {
@@ -531,7 +515,7 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
-                          children: allSkills.map((skill) {
+                          children: predefinedSkills.map((skill) {
                             final isSelected = _selectedSkills.contains(skill);
                             return FilterChip(
                               label: Text(skill),
@@ -564,43 +548,6 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
                               ),
                             );
                           }).toList(),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Add custom skill
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _customSkillController,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: AppColors.navyBlue,
-                                ),
-                                decoration: AppDecorations.styledInput(
-                                  hint: l.addCustomSkillHint,
-                                  prefixIcon: Icons.add_circle_outline,
-                                ),
-                                onSubmitted: (_) => _addCustomSkill(),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: _addCustomSkill,
-                              child: Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: AppColors.teal,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: const Icon(
-                                  Icons.add,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                         const SizedBox(height: 20),
 
@@ -653,67 +600,34 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
                         ),
                         const SizedBox(height: 12),
 
-                        // Schedule toggle
-                        Row(
+                        // Availability multi-select
+                        Text(
+                          'What kind of work are you open to?',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.navyBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
-                            _buildScheduleChip(
-                              label: l.fullTime,
-                              icon: Icons.access_time_filled,
-                              isSelected: _scheduleType == 'full_time',
-                              onTap: () =>
-                                  setState(() => _scheduleType = 'full_time'),
-                            ),
-                            const SizedBox(width: 12),
-                            _buildScheduleChip(
-                              label: l.hourly,
-                              icon: Icons.schedule,
-                              isSelected: _scheduleType == 'hourly',
-                              onTap: () =>
-                                  setState(() => _scheduleType = 'hourly'),
-                            ),
+                            _availabilityChip('full_time', 'Full-time',
+                                'Regular long-term work, fixed salary'),
+                            _availabilityChip('hourly', 'Hourly',
+                                'Come for fixed hours, paid by the hour'),
+                            _availabilityChip('one_day', 'One-day / per-visit',
+                                'Single jobs, events, or occasional visits'),
                           ],
                         ),
-                        const SizedBox(height: 16),
-
-                        // Hours per day (only when hourly)
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          child: _scheduleType == 'hourly'
-                              ? Column(
-                                  children: [
-                                    TextFormField(
-                                      controller: _hoursController,
-                                      keyboardType: TextInputType.number,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: AppColors.navyBlue,
-                                      ),
-                                      decoration: AppDecorations.styledInput(
-                                        hint: l.hoursPerDayHint,
-                                        prefixIcon: Icons.timelapse,
-                                      ),
-                                      validator: (v) {
-                                        if (_scheduleType != 'hourly') {
-                                          return null;
-                                        }
-                                        if (v == null || v.trim().isEmpty) {
-                                          return l.hoursRequired;
-                                        }
-                                        final hours = int.tryParse(v.trim());
-                                        if (hours == null ||
-                                            hours < 1 ||
-                                            hours > 24) {
-                                          return l.hoursRange;
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 20),
-                                  ],
-                                )
-                              : const SizedBox.shrink(),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Select all that apply — most workers are open to more than one',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
                         ),
+                        const SizedBox(height: 16),
 
                         // Privacy notice
                         Container(
@@ -799,53 +713,33 @@ class _HelperProfileSetupScreenState extends State<HelperProfileSetupScreen> {
     );
   }
 
-  Widget _buildScheduleChip({
-    required String label,
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.teal : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? AppColors.teal : Colors.grey.shade200,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: AppColors.teal.withValues(alpha: 0.25),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isSelected ? Colors.white : AppColors.textGrey,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected ? Colors.white : AppColors.navyBlue,
-                ),
-              ),
-            ],
-          ),
+  Widget _availabilityChip(String value, String label, String description) {
+    final selected = _scheduleTypes.contains(value);
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (on) {
+        setState(() {
+          if (on) {
+            _scheduleTypes.add(value);
+          } else {
+            _scheduleTypes.remove(value);
+          }
+        });
+      },
+      tooltip: description,
+      selectedColor: AppColors.teal,
+      checkmarkColor: Colors.white,
+      backgroundColor: Colors.grey.shade100,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : AppColors.navyBlue,
+        fontWeight: FontWeight.w500,
+        fontSize: 13,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: selected ? AppColors.teal : Colors.grey.shade300,
         ),
       ),
     );

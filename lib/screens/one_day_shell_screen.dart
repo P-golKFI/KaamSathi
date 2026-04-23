@@ -6,22 +6,20 @@ import '../services/chat_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/app_colors.dart';
 import 'conversation_list_screen.dart';
-import 'employer_home_screen.dart';
-import 'employer_profile_screen.dart';
+import 'one_day_home_screen.dart';
+import 'one_day_settings_screen.dart';
 
-class EmployerShellScreen extends StatefulWidget {
-  const EmployerShellScreen({super.key});
+class OneDayShellScreen extends StatefulWidget {
+  const OneDayShellScreen({super.key});
 
   @override
-  State<EmployerShellScreen> createState() => _EmployerShellScreenState();
+  State<OneDayShellScreen> createState() => _OneDayShellScreenState();
 }
 
-class _EmployerShellScreenState extends State<EmployerShellScreen> {
+class _OneDayShellScreenState extends State<OneDayShellScreen> {
   final PageController _pageController = PageController();
   final ChatService _chatService = ChatService();
   final ValueNotifier<String?> _browseCity = ValueNotifier(null);
-  final ValueNotifier<int> _reloadTrigger = ValueNotifier(0);
-  final GlobalKey _messagesNavKey = GlobalKey();
 
   int _currentIndex = 0;
   bool _hasUnread = false;
@@ -41,7 +39,6 @@ class _EmployerShellScreenState extends State<EmployerShellScreen> {
     _unreadSub?.cancel();
     _pageController.dispose();
     _browseCity.dispose();
-    _reloadTrigger.dispose();
     super.dispose();
   }
 
@@ -62,7 +59,6 @@ class _EmployerShellScreenState extends State<EmployerShellScreen> {
         onCitySelected: (city) {
           _browseCity.value = city;
           Navigator.pop(context);
-          // Persist to Firestore so helpers can find this employer
           final uid = FirebaseAuth.instance.currentUser?.uid;
           if (uid != null) {
             FirestoreService().updateEmployerCity(uid, city);
@@ -72,14 +68,8 @@ class _EmployerShellScreenState extends State<EmployerShellScreen> {
     );
   }
 
-  void _onProfileSaved() {
-    _reloadTrigger.value++;
-    _onTabTapped(0);
-  }
-
   Widget _buildMessagesIcon(bool active) {
     return Stack(
-      key: active ? null : _messagesNavKey,
       clipBehavior: Clip.none,
       children: [
         Icon(active
@@ -110,15 +100,12 @@ class _EmployerShellScreenState extends State<EmployerShellScreen> {
         physics: const NeverScrollableScrollPhysics(),
         onPageChanged: (i) => setState(() => _currentIndex = i),
         children: [
-          EmployerHomeScreen(
+          OneDayHomeScreen(
             browseCity: _browseCity,
-            reloadTrigger: _reloadTrigger,
             onChangeCityTapped: () => _showCityPicker(context),
-            messagesNavKey: _messagesNavKey,
           ),
-          const _SearchPlaceholder(),
-          const ConversationListScreen(chatTypeFilter: 'termBased'),
-          EmployerProfileScreen(onSaved: _onProfileSaved),
+          const ConversationListScreen(chatTypeFilter: 'oneDay'),
+          const OneDaySettingsScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -134,20 +121,15 @@ class _EmployerShellScreenState extends State<EmployerShellScreen> {
             activeIcon: Icon(Icons.home),
             label: 'Home',
           ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.search_outlined),
-            activeIcon: Icon(Icons.search),
-            label: 'Search',
-          ),
           BottomNavigationBarItem(
             icon: _buildMessagesIcon(false),
             activeIcon: _buildMessagesIcon(true),
             label: 'Messages',
           ),
           const BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
+            icon: Icon(Icons.settings_outlined),
+            activeIcon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),
@@ -155,28 +137,12 @@ class _EmployerShellScreenState extends State<EmployerShellScreen> {
   }
 }
 
-class _SearchPlaceholder extends StatelessWidget {
-  const _SearchPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text(
-          'Search coming soon',
-          style: TextStyle(fontSize: 16, color: Colors.grey),
-        ),
-      ),
-    );
-  }
-}
-
-typedef ValueCallback<T> = void Function(T value);
+typedef _ValueCallback<T> = void Function(T value);
 
 class _CityPickerSheet extends StatefulWidget {
   const _CityPickerSheet({required this.onCitySelected});
 
-  final ValueCallback<String> onCitySelected;
+  final _ValueCallback<String> onCitySelected;
 
   @override
   State<_CityPickerSheet> createState() => _CityPickerSheetState();
@@ -200,7 +166,6 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
         height: MediaQuery.sizeOf(context).height * 0.65,
         child: Column(
           children: [
-            // Handle
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Container(
@@ -227,7 +192,6 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
               ),
             ),
             const Divider(height: 1),
-            // Search field
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: TextField(
@@ -244,8 +208,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: const BorderSide(color: AppColors.teal),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 onChanged: (value) {
                   setState(() {
@@ -254,7 +217,6 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                 },
               ),
             ),
-            // Results
             Expanded(
               child: _suggestions.isEmpty
                   ? Padding(

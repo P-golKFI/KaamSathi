@@ -35,9 +35,8 @@ class FirestoreService {
       'state': profile.state,
       'city': profile.city,
       'workCategory': profile.workCategory,
-      'workSpecification': profile.workSpecification,
+      'requiredSkills': profile.requiredSkills,
       'scheduleType': profile.scheduleType,
-      'hoursPerDay': profile.hoursPerDay,
       'profileComplete': true,
       'updatedAt': FieldValue.serverTimestamp(),
     });
@@ -72,15 +71,105 @@ class FirestoreService {
   Future<void> updateEmployerWorkPreferences(
     String uid, {
     required String workCategory,
-    required String workSpecification,
+    required List<String> requiredSkills,
     required String scheduleType,
-    int? hoursPerDay,
   }) async {
     await _db.collection('users').doc(uid).update({
       'workCategory': workCategory,
-      'workSpecification': workSpecification,
+      'requiredSkills': requiredSkills,
       'scheduleType': scheduleType,
-      'hoursPerDay': hoursPerDay,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Persist the employer's last selected mode ('oneDay' or 'termBased')
+  Future<void> updateEmployerLastMode(String uid, String lastMode) async {
+    await _db.collection('users').doc(uid).update({
+      'lastMode': lastMode,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Mark that the employer has seen the home-screen tutorial
+  Future<void> markEmployerTutorialSeen(String uid) async {
+    await _db.collection('users').doc(uid).update({
+      'hasSeenTutorial': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Persist one-day search preferences (skill, city, date, timing)
+  Future<void> updateOneDayPrefs(String uid, Map<String, dynamic> prefs) async {
+    await _db.collection('users').doc(uid).update({
+      'oneDayPrefs': prefs,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Fetch helpers matching skill + city for one-day mode.
+  /// Runs two queries (workCities array + legacy city field), deduplicates,
+  /// then client-side filters by skill and excludes underage helpers.
+  Future<List<Map<String, dynamic>>> getOneDayHelpers({
+    required String skill,
+    required String city,
+  }) async {
+    final baseQuery = _db
+        .collection('users')
+        .where('role', isEqualTo: 'helper')
+        .where('profileComplete', isEqualTo: true);
+
+    final snapshots = await Future.wait([
+      baseQuery.where('workCities', arrayContains: city).get(),
+      baseQuery.where('city', isEqualTo: city).get(),
+    ]);
+
+    // Merge and deduplicate by doc ID
+    final seen = <String>{};
+    final merged = <Map<String, dynamic>>[];
+    for (final snapshot in snapshots) {
+      for (final doc in snapshot.docs) {
+        if (seen.add(doc.id)) {
+          merged.add(doc.data());
+        }
+      }
+    }
+
+    // Exclude underage helpers, require one_day schedule, and filter by skill
+    return merged.where((h) {
+      if (h['isUnderage'] == true) return false;
+      final scheduleTypes = List<String>.from(h['scheduleTypes'] ?? []);
+      if (!scheduleTypes.contains('one_day')) return false;
+      final skills = List<String>.from(h['skills'] ?? []);
+      return skills.contains(skill);
+    }).toList();
+  }
+
+  /// Persist the employer's skill filter selection and active category
+  Future<void> updateEmployerSavedFilters(
+    String uid, {
+    required String category,
+    required List<String> skills,
+  }) async {
+    await _db.collection('users').doc(uid).update({
+      'workCategory': category,
+      'savedFilters': {
+        'category': category,
+        'skills': skills,
+      },
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Update the employer's active category and required skills atomically
+  /// (called when switching categories from the home screen)
+  Future<void> updateEmployerCategoryAndSkills(
+    String uid, {
+    required String workCategory,
+    required List<String> requiredSkills,
+  }) async {
+    await _db.collection('users').doc(uid).update({
+      'workCategory': workCategory,
+      'requiredSkills': requiredSkills,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -89,14 +178,21 @@ class FirestoreService {
   Future<void> updateHelperProfile(
     String uid, {
     required List<String> workCities,
-    required String scheduleType,
-    int? hoursPerDay,
+    required List<String> scheduleTypes,
   }) async {
     await _db.collection('users').doc(uid).update({
       'workCities': workCities,
       'city': workCities.isNotEmpty ? workCities.first : '',
-      'scheduleType': scheduleType,
-      'hoursPerDay': hoursPerDay,
+      'scheduleTypes': scheduleTypes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Flag a helper account as underage — restricts visibility in search results
+  Future<void> flagHelperAsUnderage(String uid, {required int age}) async {
+    await _db.collection('users').doc(uid).update({
+      'isUnderage': true,
+      'age': age,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -115,6 +211,22 @@ class FirestoreService {
     });
   }
 
+  /// Update the employer's active city (persists browse-city changes to Firestore)
+  Future<void> updateEmployerCity(String uid, String city) async {
+    await _db.collection('users').doc(uid).update({
+      'city': city,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Update the employer's active work category
+  Future<void> updateEmployerWorkCategory(String uid, String workCategory) async {
+    await _db.collection('users').doc(uid).update({
+      'workCategory': workCategory,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   /// Save helper profile fields directly on user doc
   Future<void> saveHelperProfile(HelperProfileModel profile) async {
     await _db.collection('users').doc(profile.uid).update({
@@ -124,7 +236,7 @@ class FirestoreService {
       'city': profile.city,
       'skills': profile.skills,
       'yearsOfExperience': profile.yearsOfExperience,
-      'hoursPerDay': profile.hoursPerDay,
+      'scheduleTypes': profile.scheduleTypes,
       'profileComplete': true,
       'updatedAt': FieldValue.serverTimestamp(),
     });

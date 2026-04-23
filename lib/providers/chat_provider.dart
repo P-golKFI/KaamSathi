@@ -143,6 +143,21 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  /// Auto-send employer's required skills.
+  Future<void> sendSkillsMessage({
+    required String convoId,
+    required String senderUid,
+    required List<String> skills,
+  }) async {
+    final receiverUid = _activeConversation?.otherParticipantUid(senderUid) ?? '';
+    await _chatService.sendSkillsMessage(
+      convoId: convoId,
+      senderUid: senderUid,
+      receiverUid: receiverUid,
+      skills: skills,
+    );
+  }
+
   /// Request to share phone numbers.
   Future<void> requestNumberShare({
     required String convoId,
@@ -196,19 +211,6 @@ class ChatProvider extends ChangeNotifier {
       convoId: convoId,
       reason: reason,
       displayMessage: displayMessage,
-    );
-  }
-
-  /// Report a user.
-  Future<void> reportUser({
-    required String reporterUid,
-    required String reportedUid,
-    required String conversationId,
-  }) async {
-    await _chatService.reportUser(
-      reporterUid: reporterUid,
-      reportedUid: reportedUid,
-      conversationId: conversationId,
     );
   }
 

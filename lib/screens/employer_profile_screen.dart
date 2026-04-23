@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/employer_profile_model.dart';
 import '../providers/auth_provider.dart';
@@ -21,14 +20,13 @@ class EmployerProfileScreen extends StatefulWidget {
 class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   // Loaded values (to detect changes)
   String _loadedWorkCategory = '';
-  String _loadedWorkSpecification = '';
+  List<String> _loadedRequiredSkills = [];
   String _loadedScheduleType = 'full_time';
-  int? _loadedHoursPerDay;
 
   // Editable state
   String _workCategory = '';
+  List<String> _requiredSkills = [];
   String _scheduleType = 'full_time';
-  int? _hoursPerDay;
   bool _isDirty = false;
   bool _isLoading = true;
   bool _isSaving = false;
@@ -40,22 +38,10 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   String _city = '';
   int? _avatarIndex;
 
-  late final TextEditingController _specController;
-  late final TextEditingController _hoursController;
-
   @override
   void initState() {
     super.initState();
-    _specController = TextEditingController();
-    _hoursController = TextEditingController();
     _loadProfile();
-  }
-
-  @override
-  void dispose() {
-    _specController.dispose();
-    _hoursController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -65,9 +51,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
       final data = doc.data()!;
 
       final workCategory = data['workCategory'] ?? 'other';
-      final workSpec = data['workSpecification'] ?? '';
+      final savedFilters = data['savedFilters'] as Map<String, dynamic>?;
+      final requiredSkills = List<String>.from(
+        savedFilters?['skills'] ?? data['requiredSkills'] ?? [],
+      );
       final scheduleType = data['scheduleType'] ?? 'full_time';
-      final hoursPerDay = data['hoursPerDay'] as int?;
 
       setState(() {
         _displayName = data['displayName'] ?? data['username'] ?? '';
@@ -77,16 +65,12 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
         _avatarIndex = data['avatarIndex'] as int?;
 
         _loadedWorkCategory = workCategory;
-        _loadedWorkSpecification = workSpec;
+        _loadedRequiredSkills = requiredSkills;
         _loadedScheduleType = scheduleType;
-        _loadedHoursPerDay = hoursPerDay;
 
         _workCategory = workCategory;
+        _requiredSkills = List.from(requiredSkills);
         _scheduleType = scheduleType;
-        _hoursPerDay = hoursPerDay;
-
-        _specController.text = workSpec;
-        _hoursController.text = hoursPerDay?.toString() ?? '';
 
         _isLoading = false;
       });
@@ -97,10 +81,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   }
 
   void _checkDirty() {
+    final skillsChanged = _requiredSkills.length != _loadedRequiredSkills.length ||
+        !_requiredSkills.every(_loadedRequiredSkills.contains);
     final dirty = _workCategory != _loadedWorkCategory ||
-        _specController.text != _loadedWorkSpecification ||
-        _scheduleType != _loadedScheduleType ||
-        _hoursPerDay != _loadedHoursPerDay;
+        skillsChanged ||
+        _scheduleType != _loadedScheduleType;
     if (dirty != _isDirty) setState(() => _isDirty = dirty);
   }
 
@@ -109,13 +94,19 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
     setState(() => _isSaving = true);
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      await FirestoreService().updateEmployerWorkPreferences(
-        uid,
-        workCategory: _workCategory,
-        workSpecification: _specController.text.trim(),
-        scheduleType: _scheduleType,
-        hoursPerDay: _scheduleType == 'hourly' ? _hoursPerDay : null,
-      );
+      await Future.wait([
+        FirestoreService().updateEmployerWorkPreferences(
+          uid,
+          workCategory: _workCategory,
+          requiredSkills: _requiredSkills,
+          scheduleType: _scheduleType,
+        ),
+        FirestoreService().updateEmployerSavedFilters(
+          uid,
+          category: _workCategory,
+          skills: _requiredSkills,
+        ),
+      ]);
       if (mounted) {
         widget.onSaved != null ? widget.onSaved!() : Navigator.pop(context);
       }
@@ -192,8 +183,8 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
         _buildSectionLabel('WORK PREFERENCES'),
         _buildEditablePreferencesCard(),
         const SizedBox(height: 20),
-        _buildSectionLabel('WORK DESCRIPTION'),
-        _buildDescriptionCard(),
+        _buildSectionLabel('REQUIRED SKILLS'),
+        _buildRequiredSkillsCard(),
         const SizedBox(height: 32),
         OutlinedButton.icon(
           onPressed: _handleLogout,
@@ -221,7 +212,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   Widget _buildAvatar() {
     final hasAvatar = _avatarIndex != null &&
         _avatarIndex! >= 0 &&
-        _avatarIndex! < kAvatars.length;
+        _avatarIndex! < kEmployerAvatars.length;
 
     return Center(
       child: Container(
@@ -230,13 +221,13 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: hasAvatar
-              ? kAvatars[_avatarIndex!].$2
+              ? kEmployerAvatars[_avatarIndex!].$2
               : AppColors.navyBlue.withValues(alpha: 0.15),
         ),
         child: Center(
           child: hasAvatar
               ? Text(
-                  kAvatars[_avatarIndex!].$1,
+                  kEmployerAvatars[_avatarIndex!].$1,
                   style: const TextStyle(fontSize: 38),
                 )
               : const Icon(
@@ -370,7 +361,10 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                       .toList(),
                   onChanged: (val) {
                     if (val != null) {
-                      setState(() => _workCategory = val);
+                      setState(() {
+                        _workCategory = val;
+                        _requiredSkills = [];
+                      });
                       _checkDirty();
                     }
                   },
@@ -402,54 +396,6 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
               ),
             ],
           ),
-          // Hours per day field (only when hourly)
-          if (_scheduleType == 'hourly') ...[
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const SizedBox(
-                  width: 100,
-                  child: Text(
-                    'Hours/day',
-                    style: TextStyle(fontSize: 14, color: AppColors.textGrey),
-                  ),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: TextFormField(
-                    controller: _hoursController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: AppColors.teal),
-                      ),
-                    ),
-                    onChanged: (val) {
-                      _hoursPerDay = int.tryParse(val);
-                      _checkDirty();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Text('hrs', style: TextStyle(color: AppColors.textGrey)),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -483,7 +429,8 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
     );
   }
 
-  Widget _buildDescriptionCard() {
+  Widget _buildRequiredSkillsCard() {
+    final categorySkills = categoryToSkills[_workCategory];
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -497,28 +444,216 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           ),
         ],
       ),
-      child: TextFormField(
-        controller: _specController,
-        maxLines: 4,
-        decoration: InputDecoration(
-          hintText: 'Describe your work requirements...',
-          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.shade300),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Skills needed',
+                style: TextStyle(fontSize: 14, color: AppColors.textGrey),
+              ),
+              const Spacer(),
+              if (categorySkills != null)
+                TextButton(
+                  onPressed: _showSkillsEditor,
+                  child: const Text(
+                    'Edit',
+                    style: TextStyle(color: AppColors.teal, fontSize: 13),
+                  ),
+                ),
+            ],
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: AppColors.teal),
-          ),
-          contentPadding: const EdgeInsets.all(12),
-        ),
-        onChanged: (_) => _checkDirty(),
+          const SizedBox(height: 8),
+          if (_requiredSkills.isEmpty)
+            Text(
+              categorySkills == null
+                  ? 'All helpers in this category'
+                  : 'All ${getCategoryLabel(_workCategory)} helpers',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.navyBlue,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _requiredSkills.map((skill) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.teal.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppColors.teal.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    skill,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.teal,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
       ),
+    );
+  }
+
+  Future<void> _showSkillsEditor() async {
+    final allSkills = categoryToSkills[_workCategory];
+    if (allSkills == null) return;
+
+    Set<String> sheetSelected = Set.from(_requiredSkills);
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (_, setSheetState) {
+            return DraggableScrollableSheet(
+              initialChildSize: 0.65,
+              minChildSize: 0.4,
+              maxChildSize: 0.92,
+              expand: false,
+              builder: (_, scrollController) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Skills Needed',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.navyBlue,
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                if (sheetSelected.length == allSkills.length) {
+                                  sheetSelected = {};
+                                } else {
+                                  sheetSelected = Set.from(allSkills);
+                                }
+                              });
+                            },
+                            child: Text(
+                              sheetSelected.length == allSkills.length
+                                  ? 'Clear All'
+                                  : 'Select All',
+                              style: const TextStyle(color: AppColors.teal),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Text(
+                      'Leave blank to match all helpers in this category',
+                      style: TextStyle(fontSize: 12, color: AppColors.textGrey),
+                    ),
+                    const SizedBox(height: 8),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(20),
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: allSkills.map((skill) {
+                              final selected = sheetSelected.contains(skill);
+                              return FilterChip(
+                                label: Text(skill),
+                                selected: selected,
+                                onSelected: (val) {
+                                  setSheetState(() {
+                                    if (val) {
+                                      sheetSelected.add(skill);
+                                    } else {
+                                      sheetSelected.remove(skill);
+                                    }
+                                  });
+                                },
+                                selectedColor: AppColors.teal.withValues(alpha: 0.15),
+                                checkmarkColor: AppColors.teal,
+                                labelStyle: TextStyle(
+                                  fontSize: 13,
+                                  color: selected ? AppColors.teal : AppColors.navyBlue,
+                                ),
+                                side: BorderSide(
+                                  color: selected ? AppColors.teal : Colors.grey.shade300,
+                                ),
+                                backgroundColor: Colors.white,
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.teal,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.pop(sheetCtx);
+                            final skills = sheetSelected.toList();
+                            setState(() {
+                              _requiredSkills = skills;
+                            });
+                            _checkDirty();
+                            // Persist to savedFilters immediately so home screen stays in sync
+                            final uid = FirebaseAuth.instance.currentUser?.uid;
+                            if (uid != null) {
+                              FirestoreService().updateEmployerSavedFilters(
+                                uid,
+                                category: _workCategory,
+                                skills: skills,
+                              );
+                            }
+                          },
+                          child: const Text(
+                            'Apply',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

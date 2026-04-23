@@ -6,6 +6,8 @@ enum MessageType {
   numberShareRequest,
   numberShareAccepted,
   numberShareDeclined,
+  skillsInfo,
+  oneDayInfo,
 }
 
 class MessageModel {
@@ -15,6 +17,10 @@ class MessageModel {
   final String text;
   final String? promptKey;
   final DateTime createdAt;
+  // One-day info card fields (only set when type == oneDayInfo)
+  final String? oneDayDate;
+  final String? oneDayTiming;
+  final String? oneDaySkill;
 
   MessageModel({
     required this.id,
@@ -23,6 +29,9 @@ class MessageModel {
     required this.text,
     this.promptKey,
     required this.createdAt,
+    this.oneDayDate,
+    this.oneDayTiming,
+    this.oneDaySkill,
   });
 
   factory MessageModel.fromFirestore(DocumentSnapshot doc) {
@@ -35,6 +44,9 @@ class MessageModel {
       promptKey: data['promptKey'],
       createdAt:
           (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      oneDayDate: data['oneDayDate'] as String?,
+      oneDayTiming: data['oneDayTiming'] as String?,
+      oneDaySkill: data['oneDaySkill'] as String?,
     );
   }
 
@@ -45,6 +57,9 @@ class MessageModel {
       'text': text,
       'promptKey': promptKey,
       'createdAt': FieldValue.serverTimestamp(),
+      if (oneDayDate != null) 'oneDayDate': oneDayDate,
+      if (oneDayTiming != null) 'oneDayTiming': oneDayTiming,
+      if (oneDaySkill != null) 'oneDaySkill': oneDaySkill,
     };
   }
 
@@ -58,6 +73,10 @@ class MessageModel {
         return MessageType.numberShareAccepted;
       case 'numberShareDeclined':
         return MessageType.numberShareDeclined;
+      case 'skillsInfo':
+        return MessageType.skillsInfo;
+      case 'oneDayInfo':
+        return MessageType.oneDayInfo;
       default:
         return MessageType.prompt;
     }

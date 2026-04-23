@@ -7,8 +7,15 @@ import '../screens/avatar_selection_screen.dart';
 /// Card showing a helper's profile (displayed to employers)
 class HelperMatchCard extends StatelessWidget {
   final Map<String, dynamic> data;
+  final bool showOneDayBadge;
+  final VoidCallback? onMessageTap;
 
-  const HelperMatchCard({super.key, required this.data});
+  const HelperMatchCard({
+    super.key,
+    required this.data,
+    this.showOneDayBadge = false,
+    this.onMessageTap,
+  });
 
   /// Determine which category a helper's skills belong to
   String _getCategory(List<String> skills) {
@@ -25,8 +32,7 @@ class HelperMatchCard extends StatelessWidget {
     final name = data['fullName'] ?? data['displayName'] ?? 'Helper';
     final skills = List<String>.from(data['skills'] ?? []);
     final years = data['yearsOfExperience'] ?? 0;
-    final helperScheduleType = data['scheduleType'] ?? 'full_time';
-    final hours = data['hoursPerDay'];
+    final scheduleTypes = List<String>.from(data['scheduleTypes'] ?? []);
     final city = data['city'] ?? '';
     final category = _getCategory(skills);
     final initials = name.isNotEmpty
@@ -35,23 +41,20 @@ class HelperMatchCard extends StatelessWidget {
     final avatarIndex = data['avatarIndex'] as int?;
     final isVerified = data['isVerified'] as bool? ?? false;
     final age = data['age'] as int?;
+    final double avgRating = (data['avgRating'] as num?)?.toDouble() ?? 0.0;
+    final int vouchCount = data['vouchCount'] as int? ?? 0;
+    final List<String> topTags = List<String>.from(data['topTags'] ?? []);
 
     return GestureDetector(
-      onTap: () {
+      onTap: onMessageTap ?? () {
         Navigator.pushNamed(context, '/helper-detail', arguments: data);
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE8E8E8)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -59,17 +62,17 @@ class HelperMatchCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Avatar
-              if (avatarIndex != null && avatarIndex < kAvatars.length)
+              if (avatarIndex != null && avatarIndex < kHelperAvatars.length)
                 Container(
                   width: 52,
                   height: 52,
                   decoration: BoxDecoration(
-                    color: kAvatars[avatarIndex].$2,
+                    color: kHelperAvatars[avatarIndex].$2,
                     shape: BoxShape.circle,
                   ),
                   child: Center(
                     child: Text(
-                      kAvatars[avatarIndex].$1,
+                      kHelperAvatars[avatarIndex].$1,
                       style: const TextStyle(fontSize: 24),
                     ),
                   ),
@@ -146,6 +149,67 @@ class HelperMatchCard extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (showOneDayBadge) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.teal.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.teal.withValues(alpha: 0.4)),
+                        ),
+                        child: const Text(
+                          'One-day',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.teal,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    // Vouch badge / rating
+                    if (vouchCount == 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'New',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.orange,
+                          ),
+                        ),
+                      )
+                    else ...[
+                      Text(
+                        '$avgRating ★ ($vouchCount vouches)',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                      if (topTags.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: topTags.take(3).map((tag) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            ),
+                          )).toList(),
+                        ),
+                      ],
+                    ],
                     const SizedBox(height: 8),
                     // Skills chips
                     Wrap(
@@ -186,9 +250,15 @@ class HelperMatchCard extends StatelessWidget {
                             size: 14, color: Colors.grey.shade500),
                         const SizedBox(width: 4),
                         Text(
-                          helperScheduleType == 'full_time'
-                              ? 'Full-time'
-                              : '${hours ?? '?'} hrs/day',
+                          () {
+                            final label = scheduleTypes.map((t) {
+                              if (t == 'full_time') return 'Full-time';
+                              if (t == 'hourly') return 'Hourly';
+                              if (t == 'one_day') return 'One-day';
+                              return t;
+                            }).join(', ');
+                            return label.isNotEmpty ? label : 'Full-time';
+                          }(),
                           style: TextStyle(
                               fontSize: 12, color: Colors.grey.shade600),
                         ),
@@ -206,6 +276,37 @@ class HelperMatchCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (onMessageTap != null) ...[
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: GestureDetector(
+                          onTap: onMessageTap,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: AppColors.teal,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.chat_bubble_outline_rounded, size: 14, color: Colors.white),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Message',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -228,9 +329,8 @@ class EmployerMatchCard extends StatelessWidget {
     final name = data['username'] ?? data['displayName'] ?? 'Employer';
     final categoryValue = data['workCategory'] ?? '';
     final categoryLabel = getCategoryLabel(categoryValue);
-    final specification = data['workSpecification'] ?? '';
+    final requiredSkills = List<String>.from(data['requiredSkills'] ?? []);
     final scheduleType = data['scheduleType'] ?? 'full_time';
-    final hours = data['hoursPerDay'];
     final city = data['city'] ?? '';
     final initials = name.isNotEmpty
         ? name.trim().split(' ').map((w) => w[0]).take(2).join().toUpperCase()
@@ -256,17 +356,17 @@ class EmployerMatchCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Avatar
-            if (avatarIndex != null && avatarIndex < kAvatars.length)
+            if (avatarIndex != null && avatarIndex < kEmployerAvatars.length)
               Container(
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: kAvatars[avatarIndex].$2,
+                  color: kEmployerAvatars[avatarIndex].$2,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(
-                    kAvatars[avatarIndex].$1,
+                    kEmployerAvatars[avatarIndex].$1,
                     style: const TextStyle(fontSize: 24),
                   ),
                 ),
@@ -323,17 +423,31 @@ class EmployerMatchCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (specification.isNotEmpty) ...[
+                  if (requiredSkills.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    Text(
-                      specification,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textGrey,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: requiredSkills.take(5).map((skill) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.orange.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppColors.orange.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: Text(
+                            skill,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.orange,
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ],
                   const SizedBox(height: 8),
@@ -346,7 +460,7 @@ class EmployerMatchCard extends StatelessWidget {
                       Text(
                         scheduleType == 'full_time'
                             ? 'Full-time'
-                            : '${hours ?? '?'} hrs/day',
+                            : 'Hourly',
                         style: TextStyle(
                             fontSize: 12, color: Colors.grey.shade600),
                       ),

@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
 
@@ -16,6 +18,25 @@ class ChatService {
     final query = await _db
         .collection('conversations')
         .where('participants', arrayContains: uid1)
+        .where('status', isEqualTo: 'active')
+        .get();
+
+    for (final doc in query.docs) {
+      final participants = List<String>.from(doc['participants'] ?? []);
+      if (participants.contains(uid2)) {
+        return doc.id;
+      }
+    }
+    return null;
+  }
+
+  /// Find an existing active one-day conversation between two users.
+  Future<String?> _findExistingOneDayConversation(
+      String uid1, String uid2) async {
+    final query = await _db
+        .collection('conversations')
+        .where('participants', arrayContains: uid1)
+        .where('chatType', isEqualTo: 'oneDay')
         .where('status', isEqualTo: 'active')
         .get();
 
@@ -69,11 +90,70 @@ class ChatService {
       initiatorRole: currentRole,
       participantNames: {currentUid: currentName, otherUid: otherName},
       participantRoles: {currentUid: currentRole, otherUid: otherRole},
+      chatType: 'termBased',
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
 
     await doc.set(conversation.toFirestore());
+    return doc.id;
+  }
+
+  /// Start a one-day conversation or return the existing active one.
+  /// Auto-inserts the oneDayInfo card as the first message.
+  Future<String> startOneDayConversation({
+    required String employerUid,
+    required String helperUid,
+    required String employerName,
+    required String helperName,
+    required String oneDayDate,
+    required String oneDayTiming,
+    required String oneDaySkill,
+  }) async {
+    // Return existing active one-day chat if present
+    final existingId = await _findExistingOneDayConversation(employerUid, helperUid);
+    if (existingId != null) return existingId;
+
+    final doc = _db.collection('conversations').doc();
+    final conversation = ConversationModel(
+      id: doc.id,
+      participants: [employerUid, helperUid],
+      initiatorUid: employerUid,
+      initiatorRole: 'employer',
+      participantNames: {employerUid: employerName, helperUid: helperName},
+      participantRoles: {employerUid: 'employer', helperUid: 'helper'},
+      chatType: 'oneDay',
+      oneDayDate: oneDayDate,
+      oneDayTiming: oneDayTiming,
+      messageCount: 1,
+      lastMessageText: 'One-day work request',
+      unreadBy: [helperUid],
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    final batch = _db.batch();
+
+    // Create conversation doc
+    batch.set(doc, {
+      ...conversation.toFirestore(),
+      'initiatedBy': employerUid,
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    });
+
+    // Auto-insert oneDayInfo card message
+    final msgRef = doc.collection('messages').doc();
+    batch.set(msgRef, {
+      'senderUid': employerUid,
+      'type': 'oneDayInfo',
+      'text': 'One-day work request',
+      'oneDayDate': oneDayDate,
+      'oneDayTiming': oneDayTiming,
+      'oneDaySkill': oneDaySkill,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
     return doc.id;
   }
 
@@ -103,6 +183,39 @@ class ChatService {
     });
 
     // Update conversation metadata
+    final convoRef = _db.collection('conversations').doc(convoId);
+    batch.update(convoRef, {
+      'lastMessageAt': FieldValue.serverTimestamp(),
+      'lastMessageBy': senderUid,
+      'lastMessageText': text,
+      'messageCount': FieldValue.increment(1),
+      'unreadBy': FieldValue.arrayUnion([receiverUid]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+  }
+
+  /// Auto-send employer's required skills as a follow-up to an opening message.
+  Future<void> sendSkillsMessage({
+    required String convoId,
+    required String senderUid,
+    required String receiverUid,
+    required List<String> skills,
+  }) async {
+    final text = 'Skills I\'m looking for: ${skills.join(', ')}';
+    final batch = _db.batch();
+
+    final msgRef =
+        _db.collection('conversations').doc(convoId).collection('messages').doc();
+    batch.set(msgRef, {
+      'senderUid': senderUid,
+      'type': 'skillsInfo',
+      'text': text,
+      'promptKey': null,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
     final convoRef = _db.collection('conversations').doc(convoId);
     batch.update(convoRef, {
       'lastMessageAt': FieldValue.serverTimestamp(),
@@ -389,16 +502,37 @@ class ChatService {
   // Reporting
   // ──────────────────────────────────────────────
 
-  /// Report a user from a conversation.
-  Future<void> reportUser({
+  /// Submit a full report with reasons, description, and optional file attachment.
+  Future<void> submitReport({
     required String reporterUid,
     required String reportedUid,
+    required String reportedName,
     required String conversationId,
+    required List<String> reasons,
+    required String description,
+    PlatformFile? attachedFile,
   }) async {
+    String? attachmentUrl;
+    String? attachmentName;
+
+    if (attachedFile != null && attachedFile.bytes != null) {
+      final ref = FirebaseStorage.instance.ref(
+          'reports/$reporterUid/${DateTime.now().millisecondsSinceEpoch}_${attachedFile.name}');
+      await ref.putData(attachedFile.bytes!);
+      attachmentUrl = await ref.getDownloadURL();
+      attachmentName = attachedFile.name;
+    }
+
     await _db.collection('reports').add({
       'reporterUid': reporterUid,
       'reportedUid': reportedUid,
+      'reportedName': reportedName,
       'conversationId': conversationId,
+      'reasons': reasons,
+      'description': description,
+      'attachmentUrl': attachmentUrl,
+      'attachmentName': attachmentName,
+      'status': 'pending',
       'createdAt': FieldValue.serverTimestamp(),
     });
   }

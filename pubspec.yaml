@@ -45,8 +45,13 @@ dependencies:
   shared_preferences: ^2.3.3
   flutter_zxing: ^1.8.0
   image_picker: ^1.1.2
+  image_cropper: ^12.2.0
+  firebase_storage: ^13.0.6
+  file_picker: ^8.0.0
   pointycastle: ^3.9.1
   xml: ^6.5.0
+  tutorial_coach_mark: ^1.2.11
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:

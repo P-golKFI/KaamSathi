@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_zxing/flutter_zxing.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/aadhaar_qr_service.dart';
@@ -101,10 +102,30 @@ class _AadhaarVerificationScreenState
     );
     if (picked == null || !mounted) return;
 
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: picked.path,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop QR Code',
+          toolbarColor: AppColors.navyBlue,
+          toolbarWidgetColor: Colors.white,
+          activeControlsWidgetColor: AppColors.teal,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(
+          title: 'Crop QR Code',
+          aspectRatioLockEnabled: false,
+        ),
+      ],
+    );
+    if (cropped == null || !mounted) return;
+
     setState(() => _isProcessing = true);
+    final croppedXFile = XFile(cropped.path);
+
     try {
       final code = await zx.readBarcodeImagePath(
-        picked,
+        croppedXFile,
         DecodeParams(
           format: Format.qrCode,
           tryHarder: true,
@@ -148,9 +169,44 @@ class _AadhaarVerificationScreenState
     setState(() => _isSaving = true);
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
+      final age = _result!.age;
+
+      if (age != null && age < 18) {
+        await FirestoreService().flagHelperAsUnderage(uid, age: age);
+        if (mounted) {
+          setState(() => _isSaving = false);
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => AlertDialog(
+              title: const Text(
+                'Account Restricted',
+                style: TextStyle(
+                  color: Color(0xFF1A3A5C),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: const Text(
+                'This account has been flagged as underage. We have restricted the usage of this account.\n\n'
+                'If there has been a mistake on our side, please contact us at:\nsupport@kaamsathi.in',
+                style: TextStyle(height: 1.5),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+          if (mounted) Navigator.pop(context, false);
+        }
+        return;
+      }
+
       await FirestoreService().saveHelperVerification(
         uid,
-        age: _result!.age,
+        age: age,
         maskedUid: _result!.maskedUid,
       );
       if (mounted) Navigator.pop(context, true);
@@ -430,6 +486,12 @@ class _ScanPage extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
+                const SizedBox(height: 8),
+                const Text(
+                  'This may take 15–20 seconds',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                ),
                 const SizedBox(height: 20),
                 TextButton.icon(
                   onPressed: isProcessing ? null : onTakePhoto,
@@ -550,6 +612,10 @@ class _ConfirmPage extends StatelessWidget {
               child: Column(
                 children: [
                   _DetailRow(label: 'Aadhaar', value: result.maskedUid),
+                  if (result.age != null) ...[
+                    const Divider(height: 1),
+                    _DetailRow(label: 'Age', value: '${result.age} years'),
+                  ],
                 ],
               ),
             ),
